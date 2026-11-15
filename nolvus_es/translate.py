@@ -213,6 +213,12 @@ def prepare(data: Path) -> dict:
                        "WHERE uid=? AND status!='done'", [(es, now, uid) for uid, es in glos.items()])
         db.execute("DELETE FROM keys")
         db.executemany("INSERT OR REPLACE INTO keys(key,uid,plugin,en) VALUES(?,?,?,?)", key_rows)
+        # Unidades que ya no tiene ninguna clave (cubiertas por traducciones importadas): fuera de la cola.
+        # Si una actualización de mod las vuelve a necesitar, regresan a 'pending'.
+        db.execute("UPDATE units SET status='importado', updated=? WHERE status IN ('pending','failed') "
+                   "AND uid NOT IN (SELECT uid FROM keys)", (now,))
+        db.execute("UPDATE units SET status='pending', attempts=0, updated=? WHERE status='importado' "
+                   "AND uid IN (SELECT uid FROM keys)", (now,))
         light = {p["name"]: bool((p.get("summary") or {}).get("is_light")) for p in state["plugins"]}
         db.execute("INSERT OR REPLACE INTO meta VALUES('light_plugins', ?)", (json.dumps(light),))
         db.execute("INSERT OR REPLACE INTO meta VALUES('mcm_files', ?)", (json.dumps(mcm_meta, ensure_ascii=False),))
