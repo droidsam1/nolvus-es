@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+# Datos extraídos del juego y paquetes generados: no van al repositorio
+data/
+build/
+*.jsonl.gz
