@@ -227,6 +227,45 @@ def dsd_de_terceros(extraidos: dict[int, Path], destino: Path) -> int:
     return n
 
 
+def menus_de_terceros(extraidos: dict[int, Path], destino: Path, data: Path) -> int:
+    """Menús MCM traducidos por humanos (Interface/Translations/*_SPANISH.txt): sustituyen a los nuestros,
+    clave a clave y solo si el mod está instalado; lo que no cubren se queda con la traducción del proyecto."""
+    from .mcm import read_translation_file
+    inv = {}
+    mi = data / "mcm_inventory.json"
+    if mi.exists():
+        inv = {t["file"]: t for t in json.loads(mi.read_text(encoding="utf-8"))["translations"]}
+    n = 0
+    for carpeta in extraidos.values():
+        for f in carpeta.rglob("*"):
+            if not f.is_file() or not f.name.lower().endswith("_spanish.txt"):
+                continue
+            if [p.lower() for p in f.parts[-3:-1]] != ["interface", "translations"]:
+                continue
+            t = inv.get(f.name[: -len("_spanish.txt")].lower())
+            if not t:
+                continue
+            try:
+                en, es = read_translation_file(Path(t["path_english"])), read_translation_file(f)
+            except OSError:
+                continue
+            if not en or not any(k in es for k in en):
+                continue
+            tdir = destino / "Interface" / "translations"
+            tdir.mkdir(parents=True, exist_ok=True)
+            nuestra = {}
+            for old in list(tdir.iterdir()):              # nuestra versión (IA) de ese menú, si la hay
+                if old.name.lower() == f.name.lower():
+                    nuestra = read_translation_file(old)
+                    old.unlink()
+            # Por clave: traducción humana > la nuestra > inglés (claves nuevas del mod)
+            lines = [f"{k}\t{es.get(k) or nuestra.get(k) or v}" for k, v in en.items()]
+            (tdir / (Path(t["path_english"]).name[: -len("english.txt")] + "SPANISH.txt")).write_text(
+                "\r\n".join(lines) + "\r\n", encoding="utf-16")
+            n += 1
+    return n
+
+
 def instalar_dsd(extraidos: dict[int, Path], inst: Instance) -> bool:
     origen = extraidos.get(812636) or (REPO / "incluidos" / "DSD" if (REPO / "incluidos" / "DSD").exists() else None)
     dll = next(origen.rglob("DynamicStringDistributor.dll"), None) if origen else None
@@ -328,6 +367,7 @@ def cmd_instalar(a):
     nuevo = Path(tempfile.mkdtemp(prefix="nolvus-es-", dir=trabajo))
     stats = ensamblar(data, REPO / "traducciones", nuevo, trabajo / "oficial")
     stats["dsd_de_terceros"] = dsd_de_terceros(extraidos, nuevo)
+    stats["menus_de_terceros"] = menus_de_terceros(extraidos, nuevo, data)
     (nuevo / "meta.ini").write_text("[General]\ngameName=SkyrimSE\nmodid=0\nversion=1.0\n"
                                     "comments=Traducción al español de Nolvus (github.com/droidsam1/nolvus-es)\n",
                                     encoding="utf-8")
