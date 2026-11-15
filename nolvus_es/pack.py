@@ -23,6 +23,9 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+from .glossary import Glossary
+from .style import sentence_case
+
 DSD_DIR = Path("SKSE") / "Plugins" / "DynamicStringDistributor"
 OWN_FILE = "nolvus-es.json"
 
@@ -65,11 +68,17 @@ def pack(data: Path, out: Path, build_official: Path | None) -> dict:
                 imported_keys.add(r["key"])
                 stats["importadas"] += 1
     # 2. Traducciones con IA o glosario
-    q = """SELECT k.key, u.es, u.source FROM keys k JOIN units u ON u.uid = k.uid
+    gl = Glossary.load(data)
+    q = """SELECT k.key, u.es, u.source, u.en FROM keys k JOIN units u ON u.uid = k.uid
            WHERE u.status = 'done' AND u.es IS NOT NULL"""
-    for key, es, source in db.execute(q):
+    for key, es, source, en in db.execute(q):
         if key in imported_keys:
             continue
+        if source == "ia":   # mayúsculas a la española (el modelo tiende a copiar el Title Case inglés)
+            fixed = sentence_case(es, en, [t["es"] for t in gl.find(en)])
+            if fixed != es:
+                stats["mayusculas_corregidas"] += 1
+                es = fixed
         if key.startswith("MCM|"):
             _, file, k = key.split("|", 2)
             mcm[file][k] = es
