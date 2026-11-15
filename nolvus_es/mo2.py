@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 PLUGIN_EXT = (".esp", ".esm", ".esl")
@@ -64,11 +65,7 @@ class Instance:
                     found[name.lower()] = (self.game_data / name, "STOCK GAME")
         for mod in self.enabled_mods():
             d = self.mods_dir / mod
-            try:
-                names = os.listdir(d)
-            except OSError:
-                continue
-            for name in names:
+            for name in _listdir(str(d)):
                 if name.lower().endswith(PLUGIN_EXT):
                     found[name.lower()] = (d / name, mod)
         if self.overwrite.exists():
@@ -88,12 +85,19 @@ class Instance:
         return None
 
 
+@lru_cache(maxsize=None)
+def _listdir(path: str) -> tuple[str, ...]:
+    try:
+        return tuple(os.listdir(path))
+    except OSError:
+        return ()
+
+
 def _ci_join(base: Path, parts: list[str]) -> Path | None:
     cur = base
     for part in parts:
-        try:
-            entries = os.listdir(cur)
-        except OSError:
+        entries = _listdir(str(cur))
+        if not entries:
             return None
         match = next((e for e in entries if e.lower() == part.lower()), None)
         if match is None:

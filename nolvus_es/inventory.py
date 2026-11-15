@@ -38,6 +38,12 @@ def _string_files(inst: Instance, plugin: str) -> tuple[dict[str, Path], str | N
     return {}, None
 
 
+def _save(state_file: Path, state: dict) -> None:
+    tmp = state_file.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp.replace(state_file)
+
+
 def extract(args) -> None:
     inst = Instance(Path(args.instance), args.profile)
     out = Path(args.out)
@@ -94,6 +100,9 @@ def extract(args) -> None:
                            errors=info.errors[:5])
         p.update(done=True, summary=summary)
         done_now += 1
+        if done_now % 25 == 0:
+            _save(state_file, state)
+            print(f"  {done_now} plugins ({time.time() - t0:.0f}s) ultimo: {name}", flush=True)
     state_file.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
     left = sum(1 for p in state["plugins"] if not p["done"])
     print(f"procesados ahora: {done_now}; pendientes: {left}; {time.time() - t0:.0f}s")
