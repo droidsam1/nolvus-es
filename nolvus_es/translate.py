@@ -68,7 +68,8 @@ Reglas:
 4. Las fichas como ⟦1⟧, ⟦2⟧ son marcadores del juego: cópialas tal cual, una vez cada una, en el lugar que corresponda. Nunca las traduzcas ni las cambies.
 5. Respeta los saltos de línea del original.
 6. Si un texto es un identificador interno (sin sentido para el jugador), devuélvelo sin cambios.
-7. Responde solo con el JSON pedido."""
+7. Mayúsculas a la española: solo la primera palabra y los nombres propios ("Tamaño mínimo del widget", nunca "Tamaño Mínimo del Widget"), aunque el inglés ponga mayúscula en cada palabra.
+8. Responde solo con el JSON pedido."""
 
 SCHEMA = {"type": "object", "properties": {"t": {"type": "array", "items": {
     "type": "object", "properties": {"id": {"type": "string"}, "es": {"type": "string"}},
