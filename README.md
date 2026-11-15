@@ -22,8 +22,8 @@ Objetivos:
 | 1. Inventario | Extrae todos los textos de los plugins activos y mide cuánto hay en inglés | hecho ([informe](docs/INVENTARIO.md)) |
 | 2. Español oficial | Recupera el texto oficial de Bethesda para registros del juego base que los mods dejan en inglés | hecho: 23.512 textos |
 | 3. Traducciones existentes | Reutiliza traducciones al español ya publicadas | en curso ([lista](docs/TRADUCCIONES.md)) |
-| 4. Traducción con IA | Traduce el resto con glosario, memoria de traducción y revisión | pendiente |
-| 5. Empaquetado | Genera el mod para MO2 (JSON de DSD + traducciones de MCM) | pendiente |
+| 4. Traducción con IA | Traduce el resto con Ollama, glosario y validación; reanudable | listo para lanzar |
+| 5. Empaquetado | Genera el mod para MO2 (JSON de DSD + traducciones de MCM) | hecho |
 | 6. Actualizaciones | Detecta cambios en los mods y retraduce solo lo nuevo | pendiente |
 
 Más detalle en [docs/PLAN.md](docs/PLAN.md).
@@ -37,3 +37,17 @@ python -m nolvus_es.inventory report --out data
 
 `extract` es reanudable: si se corta, la siguiente ejecución continúa donde lo dejó.
 Las herramientas **solo leen** la instancia de Nolvus; todo lo que generan va a `data/` y `build/`.
+
+## Traducir en tu PC (Ollama)
+
+Doble clic en:
+
+| Archivo | Para qué |
+| --- | --- |
+| `1_TRADUCIR.bat` | Empieza o continúa la traducción. Se puede cerrar o apagar el PC en cualquier momento. |
+| `2_ESTADO.bat` | Progreso y tiempo estimado. |
+| `3_PARAR.bat` | Para limpiamente al terminar los lotes en curso. |
+| `4_EMPAQUETAR.bat` | Actualiza el mod en Mod Organizer con todo lo traducido hasta ahora. |
+
+Requisitos: Python 3 (`winget install Python.Python.3.12`) y Ollama con el modelo indicado en `1_TRADUCIR.bat`.
+El estado vive en `data/trabajo.sqlite`; cada lote se guarda al terminar.
