@@ -24,6 +24,7 @@ import re
 import sqlite3
 import sys
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -169,6 +170,9 @@ def prepare(data: Path) -> dict:
             mcm_meta[t["file"]] = {"filename": name[: -len("english.txt")] + "SPANISH.txt",
                                    "entries": list(entries.items())}
             for k, v in entries.items():
+                # Fuera: tablas internas con tabuladores (p. ej. B.O.O.B.I.E.S) e identificadores
+                if "\t" in v or re.fullmatch(r"[\w.\-]+", v.strip()) and ("_" in v or re.search(r"[a-z][A-Z]", v)):
+                    continue
                 if re.search(r"[A-Za-z]", v):
                     segs.append((f'MCM|{t["file"]}|{k}', v, "MCM", None, None, t["file"], t["mod"], None))
     # 4. Traducciones importadas válidas (fase 3): esas claves no necesitan IA
@@ -236,13 +240,43 @@ def _examples(data: Path) -> dict[str, list]:
     return by
 
 
+_NO_THINK = {"supported": True}
+
+
 def _ollama(url: str, model: str, messages: list, ctx: int, timeout: int = 900) -> str:
-    body = json.dumps({"model": model, "stream": False, "format": SCHEMA, "keep_alive": "30m",
-                       "options": {"temperature": 0.2, "num_ctx": ctx}, "messages": messages}).encode()
-    req = urllib.request.Request(url.rstrip("/") + "/api/chat", data=body,
+    payload = {"model": model, "stream": False, "format": SCHEMA, "keep_alive": "30m",
+               "options": {"temperature": 0.2, "num_ctx": ctx}, "messages": messages}
+    if _NO_THINK["supported"]:
+        payload["think"] = False      # sin "razonamiento": más rápido y sin respuestas vacías
+    req = urllib.request.Request(url.rstrip("/") + "/api/chat", data=json.dumps(payload).encode(),
                                  headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode("utf-8"))["message"]["content"]
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            msg = json.loads(r.read().decode("utf-8"))["message"]
+    except urllib.error.HTTPError as e:
+        if _NO_THINK["supported"] and "think" in e.read().decode("utf-8", "replace").lower():
+            _NO_THINK["supported"] = False           # modelo sin modo de razonamiento: reintentar sin él
+            return _ollama(url, model, messages, ctx, timeout)
+        raise
+    content = (msg.get("content") or "").strip()
+    if not content:
+        raise ValueError("respuesta vacía de Ollama")
+    return content
+
+
+def _gpu_report(url: str) -> str:
+    try:
+        with urllib.request.urlopen(url.rstrip("/") + "/api/ps", timeout=10) as r:
+            ms = json.loads(r.read().decode("utf-8")).get("models", [])
+    except Exception as e:  # noqa: BLE001
+        return f"(no se pudo consultar Ollama: {e})"
+    out = []
+    for m in ms:
+        size, vram = m.get("size", 0), m.get("size_vram", 0)
+        pct = 100 * vram / size if size else 0
+        out.append(f'{m.get("name")}: {size / 2**30:.1f} GB, {pct:.0f} % en la GPU'
+                   + ("" if pct >= 99 else "  <-- parte en RAM: irá lento"))
+    return "; ".join(out) or "(ningún modelo cargado todavía)"
 
 
 def _split_long(text: str, max_words: int = 450) -> list[str]:
@@ -295,7 +329,7 @@ def _translate_batch(items: list[dict], cfg: dict) -> dict[str, str]:
                  + json.dumps(payload, ensure_ascii=False))
     msgs = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": "\n\n".join(lines)}]
     words = sum(len(it["masked"].split()) for it in items)
-    ctx = 8192 if words < 900 else 16384
+    ctx = 4096 if words < 250 else 8192
     raw = _ollama(cfg["url"], cfg["model"], msgs, ctx)
     out = {}
     for r in json.loads(raw).get("t", []):
@@ -380,6 +414,7 @@ def run(data: Path, model: str, url: str, workers: int, hours: float | None,
     _print_status(db)
     done_words, t0 = 0, time.time()
     in_flight: dict = {}
+    last_report, gpu_checked = 0.0, False
     with cf.ThreadPoolExecutor(max_workers=workers) as pool:
         try:
             while True:
@@ -411,6 +446,12 @@ def run(data: Path, model: str, url: str, workers: int, hours: float | None,
                                 db.execute("UPDATE units SET attempts=attempts+1, err=?, updated=?, "
                                            "status=CASE WHEN attempts+1>=? THEN 'failed' ELSE 'pending' END "
                                            "WHERE uid=?", (err, now, MAX_ATTEMPTS, uid))
+                    if not gpu_checked:
+                        gpu_checked = True
+                        print("\nGPU: " + _gpu_report(url))
+                    if time.time() - last_report > 60:
+                        last_report = time.time()
+                        _write_progress(db, data, model, done_words, time.time() - t0, _gpu_report(url))
                     el = max(time.time() - t0, 1)
                     print(f"\r{time.strftime('%H:%M:%S')}  +{done_words:,} palabras esta sesión "
                           f"({done_words / el * 3600:,.0f}/h)      ", end="", flush=True)
@@ -419,6 +460,20 @@ def run(data: Path, model: str, url: str, workers: int, hours: float | None,
             os._exit(0)  # salir ya: lo terminado está guardado; lo que estaba en curso se repetirá
     print()
     _print_status(db)
+
+
+def _write_progress(db, data: Path, model: str, words: int, secs: float, gpu: str) -> None:
+    """Resumen legible sin abrir la base de datos (para seguir el progreso desde fuera)."""
+    last = db.execute("SELECT kind, en, es FROM units WHERE source='ia' ORDER BY updated DESC LIMIT 30").fetchall()
+    errs = db.execute("SELECT err, COUNT(*) FROM units WHERE attempts>0 AND status!='done' "
+                      "GROUP BY err ORDER BY 2 DESC LIMIT 10").fetchall()
+    info = {"hora": time.strftime("%Y-%m-%d %H:%M:%S"), "modelo": model, "gpu": gpu,
+            "sesion_palabras": words, "sesion_palabras_hora": round(words / max(secs, 1) * 3600),
+            "estado": _counts(db), "errores": errs,
+            "ultimas": [{"tipo": k, "en": e, "es": s} for k, e, s in last]}
+    tmp = data / "progreso.json.tmp"
+    tmp.write_text(json.dumps(info, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp.replace(data / "progreso.json")
 
 
 # ---------------------------------------------------------------- status

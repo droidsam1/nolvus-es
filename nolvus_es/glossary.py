@@ -31,6 +31,15 @@ KINDS = {
 MAX_WORDS = 6
 _DEVJUNK = re.compile(r"[a-z][A-Z]|\d|_|(?i:test|scene|faction|dialogue|marker|dummy|unused)")
 PROPER = {"lugar", "personaje", "facción", "raza"}
+# Palabras sueltas de mecánicas: solo cuentan si en el texto van con mayúscula ("Stamina", no "stamina")
+MECHANIC_KINDS = {"habilidad", "mecánica"}
+# Vocabulario básico de la traducción oficial que no sale como nombre propio en los plugins
+EXTRA = [
+    ("Fortify", "Reforzar"), ("Restore", "Restaurar"), ("Ravage", "Dañar"), ("Regenerate", "Regenerar"),
+    ("Stamina", "Aguante"), ("Magicka", "Magia"), ("Health", "Salud"),
+    ("Septim", "septim"), ("Septims", "septims"), ("Jarl", "jarl"), ("Thane", "thane"),
+    ("Housecarl", "huscarle"), ("Dragon Soul", "alma de dragón"), ("Dragonborn", "Sangre de Dragón"),
+]
 _WORD = re.compile(r"[A-Za-z][A-Za-z'\-]*")
 
 
@@ -52,6 +61,9 @@ def build(data: Path) -> dict:
             continue  # palabra común idéntica o nombre interno de desarrollo: no aporta
         pairs[en][es] += 1
         kinds[en][KINDS[rtype]] += 1
+    for en, es in EXTRA:
+        pairs[en] = Counter({es: 99})
+        kinds[en] = Counter({"mecánica": 99})
     out = []
     for en, c in pairs.items():
         es, n = c.most_common(1)[0]
@@ -84,13 +96,15 @@ class Glossary:
         return cls(json.loads((data / "glossary.official.json").read_text(encoding="utf-8")))
 
     def find(self, text: str, limit: int = 40) -> list[dict]:
-        words = [w.lower() for w in _WORD.findall(text)]
+        orig = _WORD.findall(text)
+        words = [w.lower() for w in orig]
         found, i = {}, 0
         while i < len(words):
             for n in range(min(MAX_WORDS, len(words) - i), 0, -1):
                 r = self.by_key.get(tuple(words[i:i + n]))
-                # Palabras sueltas solo si son nombres propios (evita "Hunt", "Iron"...)
-                if r and (n > 1 or r["kind"] in PROPER):
+                # Palabras sueltas: nombres propios, o mecánicas escritas con mayúscula
+                if r and (n > 1 or r["kind"] in PROPER
+                          or (r["kind"] in MECHANIC_KINDS and orig[i][:1].isupper())):
                     found[r["en"]] = r
                     i += n
                     break

@@ -15,8 +15,8 @@ if not defined PY (
 )
 
 rem ===== Ajustes =====
-rem Modelo de Ollama (alternativa mas ligera: gemma3:12b)
-set MODELO=gemma4:26b-a4b-it-qat
+rem Modelo de Ollama (alternativa de mas calidad pero no cabe entera en 16 GB: gemma4:26b-a4b-it-qat)
+set MODELO=gemma3:12b
 rem Peticiones en paralelo (2-4). Mas no siempre es mas rapido.
 set PARALELO=2
 rem ====================
