@@ -73,7 +73,17 @@ def scan(inst: Instance) -> dict:
             n = len(read_translation_file(Path(en[1])))
         except OSError:
             n = -1
+        real_es = 0
+        if "spanish" in langs and n > 0:
+            try:
+                e_map = read_translation_file(Path(en[1]))
+                s_map = read_translation_file(Path(langs["spanish"][1]))
+                real_es = sum(1 for k, v in e_map.items() if k in s_map and s_map[k] != v)
+            except OSError:
+                pass
         rows.append({"file": stem, "mod": en[0], "keys": n, "has_spanish": "spanish" in langs,
+                     # Muchos mods incluyen un _SPANISH.txt que es copia literal del inglés
+                     "spanish_is_real": real_es >= max(1, n * 0.3),
                      "path_english": en[1]})
     js = []
     for mod, sub, cfg in mcm_json:
@@ -97,8 +107,9 @@ def main(argv=None):
     t = r["translations"]
     print(json.dumps({
         "archivos_traduccion_ingles": len(t),
-        "ya_con_espanol": sum(x["has_spanish"] for x in t),
-        "claves_sin_espanol": sum(x["keys"] for x in t if not x["has_spanish"] and x["keys"] > 0),
+        "con_archivo_spanish": sum(x["has_spanish"] for x in t),
+        "realmente_en_espanol": sum(x["spanish_is_real"] for x in t),
+        "claves_por_traducir": sum(x["keys"] for x in t if not x["spanish_is_real"] and x["keys"] > 0),
         "configs_mcm_helper": len(r["mcm_helper"]),
         "textos_literales_mcm_helper": sum(x["literal_strings"] for x in r["mcm_helper"]),
     }, ensure_ascii=False, indent=1))

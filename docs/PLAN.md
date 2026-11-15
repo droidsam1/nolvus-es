@@ -54,6 +54,19 @@ y convertirlas a la memoria de traducción, comprobando que el texto original co
 Volver a ejecutar el inventario tras actualizar Nolvus: se comparan huellas, se retraduce
 solo lo nuevo o cambiado y se regenera el paquete.
 
+## Piezas ya disponibles
+
+| Módulo | Qué hace |
+| --- | --- |
+| `espfile.py` | Lee plugins (ESM/ESP/ESL, comprimidos y localizados) y calcula el índice de DSD y una huella por registro |
+| `bsa.py` | Lee BSA de SSE con descompresor LZ4 propio |
+| `official.py` | Diccionario oficial EN/ES de Skyrim, DLC y Creation Club (~94.000 textos) |
+| `phase2.py` | Paquete DSD con el español oficial (23.512 textos) y cola de textos cambiados por mods |
+| `importer.py` | Importa traducciones publicadas comprobando la huella del registro |
+| `glossary.py` | Glosario oficial de 17.530 términos (1.498 se mantienen sin traducir) y búsqueda en un texto |
+| `markers.py` | Protege marcadores (`<mag>`, `<Alias=...>`, `[PageBreak]`, HTML, `%s`) y valida traducciones; acepta el 99,3 % de las traducciones oficiales |
+| `mcm.py` | Inventario de menús MCM: 80 archivos, solo 7 traducidos de verdad (48 `_SPANISH.txt` son copias del inglés); ~6.500 líneas por traducir |
+
 ## Límites conocidos
 - Las voces de personajes añadidos por mods siguen en inglés (solo se traducen subtítulos).
 - Textos escritos dentro de scripts Papyrus o de DLLs no se cubren con DSD.
