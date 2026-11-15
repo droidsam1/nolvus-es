@@ -1,4 +1,4 @@
-"""Exporta las traducciones del proyecto a la carpeta traducciones/ del repositorio.
+"""Exporta las traducciones del proyecto a data/traducciones/ (uso privado: NO se publican; ver docs/PERMISOS.md).
 
 Un archivo por plugin: traducciones/<plugin>.jsonl, una línea por texto, ordenadas por clave
 (así los cambios se ven bien en git y se pueden corregir a mano o con un pull request):
@@ -18,7 +18,7 @@ Las correcciones hechas a mano en estos archivos se conservan: si una línea ya 
 misma clave y huella, export no la pisa (se marca con "manual": true al corregirla).
 
 Uso:
-    python -m nolvus_es.export --data data --out traducciones
+    python -m nolvus_es.export --data data --out data/traducciones
 """
 from __future__ import annotations
 
@@ -86,7 +86,7 @@ def main(argv=None):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default="data")
-    ap.add_argument("--out", default="traducciones")
+    ap.add_argument("--out", default="data/traducciones")
     a = ap.parse_args(argv)
     print(json.dumps(export(Path(a.data), Path(a.out)), ensure_ascii=False, indent=1))
 

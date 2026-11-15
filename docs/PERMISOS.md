@@ -42,8 +42,8 @@ Cuando un autor conceda permiso, se cambia `redistribuible` a `true` en `catalog
 
 No se redistribuyen: el instalador los lee de los archivos del propio juego del usuario (`Skyrim - Interface.bsa` trae las tablas en todos los idiomas).
 
-## Traducciones hechas por el proyecto (carpeta `traducciones/`)
+## Traducciones hechas con IA por el proyecto
 
-Solo contienen texto en español generado por el proyecto (IA y glosario oficial) y una huella del texto inglés, **no el texto original de los mods**. No incluyen nada de las traducciones de terceros: lo importado de Nexus nunca se exporta, y la IA solo ha usado como referencia el español oficial de Bethesda.
-
-Aun así, una traducción es una obra derivada del mod original. Antes de publicar el paquete en Nexus como mod, hay que revisar los permisos de traducción de cada mod traducido (pendiente; ver `docs/PLAN.md`).
+**No se publican.** Una traducción es una obra derivada del mod original y casi ningún mod de
+Nolvus autoriza expresamente traducciones de terceros. Solo se podrían incluir en el instalador
+las de los mods cuyo autor lo permita por escrito (pendiente de revisar y pedir, mod a mod).

@@ -7,7 +7,7 @@ Pasos (se puede cortar y repetir: lo ya hecho no se repite):
   4. Te guía para descargar de Nexus las traducciones de otros autores (enlaces directos);
      cuando las tienes en Descargas, las descomprime y comprueba registro a registro que
      corresponden a tu versión de cada mod.
-  5. Junta todo con las traducciones del proyecto (carpeta traducciones/) y crea el mod
+  5. Junta todo y crea el mod
      "Nolvus ES - Traduccion" + "Dynamic String Distributor" en Mod Organizer.
   6. Los activa en tu lista de mods (con copia de seguridad), si Mod Organizer está cerrado.
 
@@ -365,7 +365,7 @@ def cmd_instalar(a):
     titulo("4/5 Creando el mod «Nolvus ES - Traduccion»")
     from .ensamblar import ensamblar
     nuevo = Path(tempfile.mkdtemp(prefix="nolvus-es-", dir=trabajo))
-    stats = ensamblar(data, REPO / "traducciones", nuevo, trabajo / "oficial")
+    stats = ensamblar(data, REPO / "data" / "traducciones", nuevo, trabajo / "oficial")
     stats["dsd_de_terceros"] = dsd_de_terceros(extraidos, nuevo)
     stats["menus_de_terceros"] = menus_de_terceros(extraidos, nuevo, data)
     (nuevo / "meta.ini").write_text("[General]\ngameName=SkyrimSE\nmodid=0\nversion=1.0\n"

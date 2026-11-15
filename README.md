@@ -40,17 +40,18 @@ No hace falta IA ni ninguna GPU especial: solo Nolvus Awakening 6 instalado y Py
    - te da los **enlaces directos** a las traducciones de otros autores en Nexus
      ([lista y permisos](docs/PERMISOS.md)). Las descargas tú; el instalador las encuentra en
      *Descargas*, las abre y comprueba registro a registro que son de tu versión de cada mod;
-   - junta todo con las traducciones del proyecto (`traducciones/`) y crea los mods
+   - junta todo y crea los mods
      **Nolvus ES - Traduccion** y **Dynamic String Distributor**, y los activa con copia de seguridad de tu lista de mods.
 3. Para quitarlo: **`DESINSTALAR.bat`**.
 
 Opciones: `INSTALAR.bat --genero femenino` (traducciones que distinguen el sexo del personaje),
 `--reescanear` (tras actualizar Nolvus), `--instancia "D:\Nolvus\Instances\Nolvus Awakening"`.
 
-## Corregir traducciones
+## Qué hay (y qué no) en este repositorio
 
-Las traducciones del proyecto están en [`traducciones/`](traducciones/LEEME.md), un archivo por plugin.
-Se pueden corregir directamente en GitHub y enviar un *pull request*.
+Solo código, la lista de enlaces a Nexus y documentación. **No contiene texto de ningún juego ni
+de ningún mod**, ni traducciones de otros autores: el instalador las obtiene en tu PC a partir de
+tu propio juego y de las descargas que haces tú desde Nexus. Ver [docs/PERMISOS.md](docs/PERMISOS.md).
 
 ## Desarrollo
 
@@ -75,8 +76,6 @@ Doble clic en:
 | `3_PARAR.bat` | Para limpiamente al terminar los lotes en curso. |
 | `4_EMPAQUETAR.bat` | Actualiza el mod en Mod Organizer con todo lo traducido hasta ahora. |
 | `5_EXTRAER_TRADUCCIONES.bat` | Descomprime en `data/imports` las traducciones de Nexus descargadas. |
-
-Para publicar lo traducido: `python -m nolvus_es.export --data data --out traducciones`.
 
 Requisitos: Python 3 (`winget install Python.Python.3.12`) y Ollama con el modelo indicado en `1_TRADUCIR.bat`.
 El estado vive en `data/trabajo.sqlite`; cada lote se guarda al terminar.
