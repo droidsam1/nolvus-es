@@ -35,8 +35,7 @@ No hace falta IA ni ninguna GPU especial: solo Nolvus Awakening 6 instalado y Py
 
 1. Descarga este repositorio (botón **Code → Download ZIP**) y descomprímelo.
 2. Cierra Mod Organizer y doble clic en **`INSTALAR.bat`**. El instalador:
-   - encuentra tu Nolvus y lee los textos de tus plugins (la primera vez, 20-40 min; se puede cortar y seguir);
-   - saca el español oficial de Bethesda de tu propio juego;
+   - encuentra tu Nolvus y saca el español oficial de Bethesda de tu propio juego;
    - te da los **enlaces directos** a las traducciones de otros autores en Nexus
      ([lista y permisos](docs/PERMISOS.md)). Las descargas tú; el instalador las encuentra en
      *Descargas*, las abre y comprueba registro a registro que son de tu versión de cada mod;
@@ -45,7 +44,7 @@ No hace falta IA ni ninguna GPU especial: solo Nolvus Awakening 6 instalado y Py
 3. Para quitarlo: **`DESINSTALAR.bat`**.
 
 Opciones: `INSTALAR.bat --genero femenino` (traducciones que distinguen el sexo del personaje),
-`--reescanear` (tras actualizar Nolvus), `--instancia "D:\Nolvus\Instances\Nolvus Awakening"`.
+`--instancia "D:\Nolvus\Instances\Nolvus Awakening"`.
 
 ## Qué hay (y qué no) en este repositorio
 

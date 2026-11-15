@@ -1,15 +1,13 @@
 """Instalador de Nolvus ES: traduce tu Nolvus al español sin IA ni modelos locales.
 
-Pasos (se puede cortar y repetir: lo ya hecho no se repite):
+Pasos (unos minutos; se puede cortar y repetir):
   1. Encuentra tu instalación de Nolvus y su perfil.
-  2. Lee los textos de todos tus plugins (la primera vez tarda un rato).
-  3. Saca el español oficial de Bethesda de tu propio juego.
-  4. Te guía para descargar de Nexus las traducciones de otros autores (enlaces directos);
-     cuando las tienes en Descargas, las descomprime y comprueba registro a registro que
-     corresponden a tu versión de cada mod.
-  5. Junta todo y crea el mod
-     "Nolvus ES - Traduccion" + "Dynamic String Distributor" en Mod Organizer.
-  6. Los activa en tu lista de mods (con copia de seguridad), si Mod Organizer está cerrado.
+  2. Saca el español oficial de Bethesda de tu propio juego y lo aplica a los registros que
+     Nolvus deja en inglés (según catalogo/receta_oficial.json.gz: solo claves, sin texto).
+  3. Te guía para descargar de Nexus las traducciones de otros autores (enlaces directos);
+     cuando las tienes, las descomprime y comprueba registro a registro que son de tu versión.
+  4. Crea los mods "Nolvus ES - Traduccion" y "Dynamic String Distributor" en Mod Organizer
+     y los activa (con copia de seguridad de tu lista de mods).
 
 Uso:
     python -m nolvus_es.instalador                 (lo normal: INSTALAR.bat)
@@ -30,7 +28,6 @@ import time
 import webbrowser
 import zipfile
 from pathlib import Path
-from types import SimpleNamespace
 
 from .mo2 import Instance
 
@@ -87,26 +84,54 @@ def mo2_abierto() -> bool:
     return "ModOrganizer.exe" in r.stdout
 
 
-# ----------------------------------------------------------------- 2-3. inventario y oficial
+# ----------------------------------------------------------------- 2. español oficial
 
-def inventario(inst: Instance, data: Path):
-    from .inventory import extract
-    args = SimpleNamespace(instance=str(inst.root), profile=inst.profile, out=str(data), budget=60)
-    while True:
-        extract(args)
-        st = json.loads((data / "plugins.json").read_text(encoding="utf-8"))
-        if all(p["done"] for p in st["plugins"]):
-            return st
+RECETA = REPO / "catalogo" / "receta_oficial.json.gz"
 
 
-def oficial(inst: Instance, data: Path, st: dict, build: Path) -> dict:
-    from . import official, phase2
-    if not (data / "official.json.gz").exists():
-        names = [p["name"] for p in st["plugins"] if (p.get("summary") or {}).get("official")]
-        official.build(inst.game_data, names, data / "official.json.gz")
-    if build.exists():
-        shutil.rmtree(build)
-    return phase2.run(data, build)
+def oficial(inst: Instance, data: Path, destino: Path) -> int:
+    """Español oficial de Bethesda (de los BSA del propio jugador) para las claves de la receta."""
+    import gzip
+    from . import official
+    from .inventory import OFFICIAL
+    from .phase2 import PACK_NAME
+    dic = data / "official.json.gz"
+    if not dic.exists():
+        # Cada plugin oficial se lee de donde lo sirve MO2 (el Creation Club puede venir en un mod)
+        resueltos = inst.resolve_plugins()
+        grupos: dict[Path, list[str]] = {}
+        # Todos los oficiales disponibles (el Creation Club se carga también sin estar en plugins.txt)
+        orden = {m.lower(): i for i, m in enumerate(official.OFFICIAL_MASTERS)}
+        for n in sorted((n for n in resueltos if OFFICIAL.match(n)), key=lambda n: (orden.get(n, 99), n)):
+            ruta = Path(resueltos[n][0])
+            grupos.setdefault(ruta.parent, []).append(ruta.name)
+        off = {}
+        for carpeta, nombres in grupos.items():
+            tmp = data / "official.parcial.json.gz"
+            official.build(carpeta, nombres, tmp)
+            off.update(json.load(gzip.open(tmp, "rt", encoding="utf-8")))
+            tmp.unlink()
+        with gzip.open(dic, "wt", encoding="utf-8") as f:
+            json.dump(off, f, ensure_ascii=False)
+    off = json.load(gzip.open(dic, "rt", encoding="utf-8"))
+    receta = json.load(gzip.open(RECETA, "rt", encoding="utf-8"))
+    por_owner: dict[str, list] = {}
+    for key, idx in receta:
+        o = off.get(key)
+        if not o or not o[1]:
+            continue
+        owner, local, ftype, _ = key.split("|")
+        e = {"form_id": f"0x{local}|{owner}", "type": ftype, "string": o[1]}
+        if idx is not None:
+            e["index"] = idx
+        por_owner.setdefault(owner, []).append(e)
+    n = 0
+    for owner, entries in por_owner.items():
+        d = destino / "SKSE" / "Plugins" / "DynamicStringDistributor" / owner
+        d.mkdir(parents=True, exist_ok=True)
+        (d / PACK_NAME).write_text(json.dumps(entries, ensure_ascii=False, indent=1), encoding="utf-8")
+        n += len(entries)
+    return n
 
 
 # ----------------------------------------------------------------- 4. traducciones de Nexus
@@ -129,6 +154,22 @@ def localizar(archivo: dict, carpetas: list[Path]) -> Path | None:
                 if mejor is None or f.stat().st_mtime > mejor.stat().st_mtime:
                     mejor = f
     return mejor
+
+
+def carpetas_descarga(inst: Instance) -> list[Path]:
+    """Descargas de Windows, la carpeta de descargas de Mod Organizer (botón «Mod manager download») e incluidos/."""
+    out = [Path.home() / "Downloads", REPO / "incluidos"]
+    ini = inst.root / "MO2" / "ModOrganizer.ini"
+    try:
+        for line in ini.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.lower().startswith("download_directory="):
+                v = line.split("=", 1)[1].strip().replace("\\\\", "\\").replace("@ByteArray(", "").rstrip(")")
+                if v:
+                    out.append(Path(v))
+    except OSError:
+        pass
+    out.append(inst.root / "MODS" / "downloads")
+    return out
 
 
 def necesarios(cat: dict, genero: str) -> list[dict]:
@@ -183,9 +224,8 @@ def descomprimir(archivo: Path, destino: Path, sz: str | None) -> str:
     return "descomprimido"
 
 
-def importar(st: dict, extraidos: dict[int, Path], cat: dict, data: Path) -> dict:
+def importar(activos: dict[str, Path], extraidos: dict[int, Path], cat: dict, data: Path) -> dict:
     from .importer import import_pair
-    activos = {p["name"].lower(): p["path"] for p in st["plugins"] if p.get("path")}
     por_id = {a["file_id"]: a for a in cat["archivos"]}
     hecho = {}
     hechos_file = data / "tm" / "importados.json"
@@ -337,20 +377,15 @@ def cmd_instalar(a):
     data = trabajo / "datos"
     data.mkdir(parents=True, exist_ok=True)
     cat = json.loads(CATALOGO.read_text(encoding="utf-8"))
+    nuevo = Path(tempfile.mkdtemp(prefix="nolvus-es-", dir=trabajo))
 
-    titulo("1/5 Leyendo los textos de tus plugins (la primera vez, 20-40 min; se puede cortar y seguir)")
-    if a.reescanear and (data / "plugins.json").exists():
-        (data / "plugins.json").unlink()
-    st = inventario(inst, data)
+    titulo("1/4 Español oficial de Bethesda (de tu propio juego)")
+    print(f"  {oficial(inst, data, trabajo / 'oficial'):,} textos".replace(",", "."), flush=True)
+    resueltos = inst.resolve_plugins()
+    activos = {n.lower(): resueltos[n.lower()][0] for n in inst.active_plugins() if n.lower() in resueltos}
 
-    titulo("2/5 Español oficial de Bethesda (de tu propio juego)")
-    r = oficial(inst, data, st, trabajo / "oficial")
-    print(f"  {r.get('textos_oficiales', r)}" if isinstance(r, dict) else r)
-    from .mcm import scan
-    (data / "mcm_inventory.json").write_text(json.dumps(scan(inst), ensure_ascii=False, indent=1), encoding="utf-8")
-
-    titulo("3/5 Traducciones de otros autores en Nexus")
-    carpetas = [Path(p) for p in a.descargas] if a.descargas else [Path.home() / "Downloads", REPO / "incluidos"]
+    titulo("2/4 Traducciones de otros autores en Nexus")
+    carpetas = [Path(p) for p in a.descargas] if a.descargas else carpetas_descarga(inst)
     hay = guiar_descargas(cat, a.genero, carpetas, a.si)
     sz = siete_zip(inst)
     extraidos = {}
@@ -360,12 +395,22 @@ def cmd_instalar(a):
             extraidos[fid] = trabajo / "descargas" / str(fid)
         except Exception as e:  # noqa: BLE001
             print(f"  ERROR al abrir {arch.name}: {e}")
-    importar(st, extraidos, cat, data)
+    importar(activos, extraidos, cat, data)
 
-    titulo("4/5 Creando el mod «Nolvus ES - Traduccion»")
+    titulo("3/4 Creando el mod «Nolvus ES - Traduccion»")
     from .ensamblar import ensamblar
-    nuevo = Path(tempfile.mkdtemp(prefix="nolvus-es-", dir=trabajo))
-    stats = ensamblar(data, REPO / "data" / "traducciones", nuevo, trabajo / "oficial")
+    from .espfile import read_header
+    from .mcm import scan
+    (data / "mcm_inventory.json").write_text(json.dumps(scan(inst), ensure_ascii=False, indent=1), encoding="utf-8")
+
+    class Ligeros(dict):              # ¿plugin ESL? (solo se mira la cabecera de los que hacen falta)
+        def get(self, name, default=False):
+            if name not in self:
+                p = activos.get(name.lower())
+                self[name] = bool(p and read_header(Path(p)).is_light)
+            return dict.get(self, name, default)
+
+    stats = ensamblar(data, REPO / "data" / "traducciones", nuevo, trabajo / "oficial", Ligeros())
     stats["dsd_de_terceros"] = dsd_de_terceros(extraidos, nuevo)
     stats["menus_de_terceros"] = menus_de_terceros(extraidos, nuevo, data)
     (nuevo / "meta.ini").write_text("[General]\ngameName=SkyrimSE\nmodid=0\nversion=1.0\n"
@@ -380,7 +425,7 @@ def cmd_instalar(a):
     if not ok_dsd:
         print("  AVISO: falta Dynamic String Distributor; sin él el juego no carga las traducciones.")
 
-    titulo("5/5 Activando en Mod Organizer")
+    titulo("4/4 Activando en Mod Organizer")
     if a.no_activar:
         print("  (sin tocar la lista de mods: --no-activar)")
         return
@@ -414,7 +459,6 @@ def main(argv=None):
                     help="variante de las traducciones que distinguen el sexo del personaje")
     ap.add_argument("--descargas", nargs="*", help="carpetas donde buscar las descargas de Nexus")
     ap.add_argument("--trabajo", help="carpeta de trabajo (por defecto, instalacion/ junto al instalador)")
-    ap.add_argument("--reescanear", action="store_true", help="volver a leer los plugins (tras actualizar Nolvus)")
     ap.add_argument("--si", action="store_true", help="no preguntar nada")
     ap.add_argument("--no-activar", action="store_true", help="crear los mods pero no tocar la lista de mods")
     a = ap.parse_args(argv)

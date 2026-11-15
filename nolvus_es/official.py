@@ -64,7 +64,7 @@ def _lookup(tables, sid: int, rtype: str, field: str) -> str | None:
 
 def build(data_dir: Path, plugins: list[str], out_file: Path) -> dict:
     """Construye el diccionario oficial EN/ES para los plugins oficiales dados (en orden de carga)."""
-    iface = Bsa(data_dir / "Skyrim - Interface.bsa")
+    iface = None
     result: dict[str, list] = {}
     stats = {}
     for name in plugins:
@@ -72,7 +72,10 @@ def build(data_dir: Path, plugins: list[str], out_file: Path) -> dict:
         if not path.exists():
             continue
         stem = path.stem
-        bsa = iface if name in OFFICIAL_MASTERS else None
+        bsa = None
+        if name in OFFICIAL_MASTERS:
+            iface = iface or Bsa(data_dir / "Skyrim - Interface.bsa")
+            bsa = iface
         if bsa is None:
             bp = data_dir / f"{stem}.bsa"
             if not bp.exists():

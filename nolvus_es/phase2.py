@@ -82,6 +82,7 @@ def run(data: Path, build: Path) -> dict:
     stats = Counter()
     by_owner: dict[str, list] = defaultdict(list)
     queue = []
+    receta = []      # solo claves (sin texto): qué campos de Nolvus llevan el español oficial
     for key, (plugin, r) in winner.items():
         owner, local, ftype, _ = key.split("|")
         text = r["s"]
@@ -98,6 +99,7 @@ def run(data: Path, build: Path) -> dict:
             if idx is not None:
                 entry["index"] = idx
             by_owner[owner].append(entry)
+            receta.append([key, idx])
             stats["resuelto_con_oficial"] += 1
             continue
         if classify(text) == "es":
@@ -117,6 +119,8 @@ def run(data: Path, build: Path) -> dict:
     with gzip.open(data / "queue_vanilla_changed.jsonl.gz", "wt", encoding="utf-8") as f:
         for q in queue:
             f.write(json.dumps(q, ensure_ascii=False) + "\n")
+    with gzip.open(data / "receta_oficial.json.gz", "wt", encoding="utf-8") as f:
+        json.dump(sorted(receta, key=lambda x: x[0]), f)
     stats["plugins_dueños"] = len(by_owner)
     return dict(stats)
 

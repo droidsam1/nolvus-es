@@ -52,9 +52,17 @@ def textos_actuales(data: Path) -> tuple[dict[str, str], dict[str, bool]]:
     return winner, light
 
 
-def ensamblar(data: Path, traducciones: Path, out: Path, oficial: Path | None) -> dict:
+def ensamblar(data: Path, traducciones: Path, out: Path, oficial: Path | None, light: dict | None = None) -> dict:
+    """light: {plugin: es ESL}. Si no se da, se saca del inventario (data/plugins.json)."""
     stats = defaultdict(int)
-    actual, light = textos_actuales(data)
+    propias = sorted(traducciones.glob("*.jsonl")) if traducciones.exists() else []
+    if propias and not (data / "plugins.json").exists():
+        propias = []                      # sin inventario no se pueden comprobar: no se usan
+        stats["traducciones_propias_sin_inventario"] = 1
+    actual = {}
+    if propias or light is None:          # el inventario completo solo hace falta para traducciones propias
+        actual, light_inv = textos_actuales(data)
+        light = light if light is not None else light_inv
     by_owner: dict[str, dict[tuple, dict]] = defaultdict(dict)
     hechas: set[str] = set()
 
@@ -82,7 +90,7 @@ def ensamblar(data: Path, traducciones: Path, out: Path, oficial: Path | None) -
                 mcm_inv[t["file"]] = t
     mcm_en: dict[str, dict] = {}
     mcm_es: dict[str, dict] = defaultdict(dict)
-    for f in sorted(traducciones.glob("*.jsonl")) if traducciones.exists() else []:
+    for f in propias:
         for line in f.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
