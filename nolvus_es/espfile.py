@@ -51,9 +51,14 @@ class TextEntry:
     form_id: int           # FormID tal como aparece en el plugin
     editor_id: str | None  # EDID, si existe
     field: str             # p.ej. "FULL"
-    index: int             # posición del campo dentro del registro (para INFO NAM1, QUST NNAM...)
+    index: int             # posición del campo dentro del registro (orden de aparición)
     text: str | None       # texto (None si el plugin está localizado y no tenemos los .STRINGS)
     string_id: int | None = None  # ID en el archivo .STRINGS si el plugin está localizado
+    # Índice en el sentido de Dynamic String Distributor:
+    #   INFO NAM1 -> número de respuesta (TRDT); QUST NNAM -> índice del objetivo (QOBJ);
+    #   QUST CNAM -> (etapa INDX, nº de entrada de diario); MESG ITXT -> posición;
+    #   PERK EPF2 -> índice de fragmento (EPF3). None para el resto.
+    dsd_index: object = None
 
 
 @dataclass
@@ -148,14 +153,38 @@ def _walk(data: bytes, pos: int, end: int, info: PluginInfo, out: list[TextEntry
                 continue
         edid = None
         counters: dict[str, int] = {}
+        stage = log_i = obj = resp = None
+        pending_epf2: TextEntry | None = None
         for sub, val in _subrecords(body):
             if sub == "EDID":
                 edid = _decode(val)
                 continue
+            # Contexto necesario para el índice de DSD
+            if rtype == "QUST":
+                if sub == "INDX" and len(val) >= 2:
+                    stage, log_i = struct.unpack_from("<H", val)[0], -1
+                elif sub == "QSDT":
+                    log_i = (log_i if log_i is not None else -1) + 1
+                elif sub == "QOBJ" and len(val) >= 2:
+                    obj = struct.unpack_from("<H", val)[0]
+            elif rtype == "INFO" and sub == "TRDT" and len(val) >= 13:
+                resp = val[12]
+            elif rtype == "PERK" and sub == "EPF3" and pending_epf2 is not None and len(val) >= 2:
+                pending_epf2.dsd_index = struct.unpack_from("<H", val, 2)[0] if len(val) >= 4 else struct.unpack_from("<H", val)[0]
+                pending_epf2 = None
             if sub not in wanted:
                 continue
             idx = counters.get(sub, 0)
             counters[sub] = idx + 1
+            dsd = None
+            if rtype == "INFO" and sub == "NAM1":
+                dsd = resp
+            elif rtype == "QUST" and sub == "NNAM":
+                dsd = obj
+            elif rtype == "QUST" and sub == "CNAM":
+                dsd = (stage, max(log_i or 0, 0))
+            elif sub == "ITXT":
+                dsd = idx
             if info.localized:
                 if len(val) != 4:
                     continue
@@ -163,11 +192,15 @@ def _walk(data: bytes, pos: int, end: int, info: PluginInfo, out: list[TextEntry
                 if sid == 0:
                     continue
                 text = strings.get(sid, rtype, sub) if strings else None
-                out.append(TextEntry(rtype, fid, edid, sub, idx, text, sid))
+                entry = TextEntry(rtype, fid, edid, sub, idx, text, sid, dsd)
             else:
                 text = _decode(val)
-                if text.strip():
-                    out.append(TextEntry(rtype, fid, edid, sub, idx, text))
+                if not text.strip():
+                    continue
+                entry = TextEntry(rtype, fid, edid, sub, idx, text, None, dsd)
+            out.append(entry)
+            if rtype == "PERK" and sub == "EPF2":
+                pending_epf2 = entry
 
 
 class StringTables:
@@ -193,7 +226,10 @@ class StringTables:
 
 
 def _read_strings(path: Path, length_prefixed: bool) -> dict[int, str]:
-    data = path.read_bytes()
+    return _read_strings_bytes(path.read_bytes(), length_prefixed)
+
+
+def _read_strings_bytes(data: bytes, length_prefixed: bool) -> dict[int, str]:
     count, _size = struct.unpack_from("<II", data, 0)
     base = 8 + count * 8
     out = {}

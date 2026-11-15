@@ -20,7 +20,7 @@ Objetivos:
 | Fase | Qué hace | Estado |
 | --- | --- | --- |
 | 1. Inventario | Extrae todos los textos de los plugins activos y mide cuánto hay en inglés | hecho ([informe](docs/INVENTARIO.md)) |
-| 2. Español oficial | Recupera el texto oficial de Bethesda para registros del juego base que los mods dejan en inglés | pendiente |
+| 2. Español oficial | Recupera el texto oficial de Bethesda para registros del juego base que los mods dejan en inglés | hecho: 23.512 textos |
 | 3. Traducciones existentes | Reutiliza traducciones al español ya publicadas | pendiente |
 | 4. Traducción con IA | Traduce el resto con glosario, memoria de traducción y revisión | pendiente |
 | 5. Empaquetado | Genera el mod para MO2 (JSON de DSD + traducciones de MCM) | pendiente |

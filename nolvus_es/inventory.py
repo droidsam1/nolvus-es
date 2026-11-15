@@ -22,7 +22,7 @@ from .espfile import StringTables, iter_texts, read_header
 from .lang import classify
 from .mo2 import Instance
 
-OFFICIAL = re.compile(r"^(skyrim\.esm|update\.esm|dawnguard\.esm|hearthfires\.esm|dragonborn\.esm|cc[a-z0-9]+-.*\.es[lmp]|_resourcepack\.esl)$", re.I)
+OFFICIAL = re.compile(r"^(skyrim\.esm|update\.esm|dawnguard\.esm|hearthfires\.esm|dragonborn\.esm|cc[a-z]{3}sse\d{3}-[a-z0-9_]+\.es[lm]|_resourcepack\.esl)$", re.I)
 
 
 def _string_files(inst: Instance, plugin: str) -> tuple[dict[str, Path], str | None]:
@@ -92,7 +92,8 @@ def extract(args) -> None:
                     counts[lang] += 1
                     words[lang] += len(e.text.split()) if e.text else 0
                     f.write(json.dumps({"t": e.rec_type, "fid": e.form_id, "edid": e.editor_id,
-                                        "f": e.field, "i": e.index, "s": e.text, "sid": e.string_id,
+                                        "f": e.field, "i": e.index, "di": e.dsd_index,
+                                        "s": e.text, "sid": e.string_id,
                                         "lang": lang}, ensure_ascii=False) + "\n")
             summary.update(localized=info.localized, strings_lang=slang, masters=info.masters,
                            is_light=info.is_light, records=info.record_count,
@@ -104,6 +105,7 @@ def extract(args) -> None:
             _save(state_file, state)
             print(f"  {done_now} plugins ({time.time() - t0:.0f}s) ultimo: {name}", flush=True)
     state_file.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
+    _save(state_file, state)
     left = sum(1 for p in state["plugins"] if not p["done"])
     print(f"procesados ahora: {done_now}; pendientes: {left}; {time.time() - t0:.0f}s")
 
