@@ -30,8 +30,8 @@ Más detalle en [docs/PLAN.md](docs/PLAN.md).
 
 ## Instalar (jugadores)
 
-No hace falta IA ni ninguna GPU especial: solo Nolvus Awakening 6 instalado y Python 3
-(`winget install Python.Python.3.12`).
+No hace falta IA, ni GPU especial, ni instalar nada más: solo Nolvus Awakening 6. Si no tienes
+Python, el instalador prepara uno portátil (el oficial de python.org) solo para él.
 
 1. Descarga este repositorio (botón **Code → Download ZIP**) y descomprímelo.
 2. Cierra Mod Organizer y doble clic en **`INSTALAR.bat`**. El instalador:
