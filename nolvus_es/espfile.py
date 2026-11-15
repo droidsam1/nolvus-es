@@ -8,6 +8,7 @@ No modifica nunca el plugin: solo lee.
 """
 from __future__ import annotations
 
+import hashlib
 import struct
 import zlib
 from dataclasses import dataclass, field
@@ -70,6 +71,8 @@ class PluginInfo:
     is_master: bool = False
     is_light: bool = False
     record_count: int = 0
+    # Huella por FormID de todo lo que NO es texto traducible (para detectar cambios de versión)
+    rec_hash: dict = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
 
 
@@ -115,13 +118,14 @@ def read_header(path: Path) -> PluginInfo:
     return info
 
 
-def iter_texts(path: Path, strings: "StringTables | None" = None) -> tuple[PluginInfo, list[TextEntry]]:
+def iter_texts(path: Path, strings: "StringTables | None" = None, hashes: bool = False) -> tuple[PluginInfo, list[TextEntry]]:
     """Devuelve la cabecera del plugin y todos sus textos traducibles."""
     info = read_header(path)
     if info.errors:
         return info, []
     data = path.read_bytes()
     out: list[TextEntry] = []
+    info._hashes = hashes
     _walk(data, 0, len(data), info, out, strings)
     return info, out
 
@@ -143,8 +147,10 @@ def _walk(data: bytes, pos: int, end: int, info: PluginInfo, out: list[TextEntry
         pos += 24 + dsize
         info.record_count += 1
         wanted = TRANSLATABLE.get(rtype)
-        if not wanted or rtype == "TES4":
+        want_hash = getattr(info, "_hashes", False) and rtype != "TES4"
+        if (not wanted and not want_hash) or rtype == "TES4":
             continue
+        wanted = wanted or set()
         if flags & FLAG_COMPRESSED:
             try:
                 body = zlib.decompress(body[4:])
@@ -155,7 +161,10 @@ def _walk(data: bytes, pos: int, end: int, info: PluginInfo, out: list[TextEntry
         counters: dict[str, int] = {}
         stage = log_i = obj = resp = None
         pending_epf2: TextEntry | None = None
+        h = hashlib.blake2b(rtype.encode(), digest_size=12) if want_hash else None
         for sub, val in _subrecords(body):
+            if h is not None and sub not in wanted and sub != "EDID":
+                h.update(sub.encode()); h.update(len(val).to_bytes(4, "little")); h.update(val)
             if sub == "EDID":
                 edid = _decode(val)
                 continue
@@ -201,6 +210,8 @@ def _walk(data: bytes, pos: int, end: int, info: PluginInfo, out: list[TextEntry
             out.append(entry)
             if rtype == "PERK" and sub == "EPF2":
                 pending_epf2 = entry
+        if h is not None:
+            info.rec_hash[fid] = h.hexdigest()
 
 
 class StringTables:
