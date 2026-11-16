@@ -1,0 +1,8 @@
+# Clave de API para 6_TRADUCIR_API.bat. Este archivo (API.txt) NO se sube al repositorio.
+#
+# Anthropic: crea una clave en https://console.anthropic.com  (empieza por sk-ant-)
+# OpenAI:    crea una clave en https://platform.openai.com    (empieza por sk-)
+clave=
+#
+# Modelo (opcional con Anthropic; con OpenAI pon el que quieras usar):
+modelo=claude-sonnet-5-5

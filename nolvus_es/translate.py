@@ -302,8 +302,8 @@ def _split_long(text: str, max_words: int = 450) -> list[str]:
     return chunks
 
 
-def _translate_batch(items: list[dict], cfg: dict) -> dict[str, str]:
-    """items: [{uid, masked, kind, mod, ref_es, terms}] -> {uid: texto traducido (aún con fichas)}"""
+def user_prompt(items: list[dict], cfg: dict) -> str:
+    """Instrucciones del lote (las mismas para Ollama y para las API por lotes)."""
     kind = items[0]["kind"]
     fam = kind_family(kind)
     lines = [f"Tipo de texto: {KIND_GUIDE.get(fam, KIND_GUIDE['DESC'])}"]
@@ -334,16 +334,25 @@ def _translate_batch(items: list[dict], cfg: dict) -> dict[str, str]:
                      "úsala como base y cambia solo lo que haya cambiado en el inglés.")
     lines.append('Traduce cada "en" y responde con {"t":[{"id":"1","es":"..."}, ...]} en el mismo orden.\n'
                  + json.dumps(payload, ensure_ascii=False))
-    msgs = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": "\n\n".join(lines)}]
-    words = sum(len(it["masked"].split()) for it in items)
-    ctx = 4096 if words < 250 else 8192
-    raw = _ollama(cfg["url"], cfg["model"], msgs, ctx)
+    return "\n\n".join(lines)
+
+
+def parse_reply(raw: str, items: list[dict]) -> dict[str, str]:
+    i, j = raw.find("{"), raw.rfind("}")
     out = {}
-    for r in json.loads(raw).get("t", []):
+    for r in json.loads(raw[i:j + 1] if i >= 0 else raw).get("t", []):
         idx = int(str(r.get("id", "0")).strip() or 0) - 1
         if 0 <= idx < len(items):
             out[items[idx]["uid"]] = r.get("es", "")
     return out
+
+
+def _translate_batch(items: list[dict], cfg: dict) -> dict[str, str]:
+    """items: [{uid, masked, kind, mod, ref_es, terms}] -> {uid: texto traducido (aún con fichas)}"""
+    msgs = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": user_prompt(items, cfg)}]
+    words = sum(len(it["masked"].split()) for it in items)
+    ctx = 4096 if words < 250 else 8192
+    return parse_reply(_ollama(cfg["url"], cfg["model"], msgs, ctx), items)
 
 
 def _work(batch: list[dict], cfg: dict) -> dict[str, tuple[str | None, str | None]]:
@@ -362,20 +371,23 @@ def _work(batch: list[dict], cfg: dict) -> dict[str, tuple[str | None, str | Non
     except Exception as e:  # red, Ollama caído, JSON inválido...: se reintenta más tarde
         return {it["uid"]: (None, f"lote: {type(e).__name__}: {str(e)[:150]}") for it in batch}
     for it in batch:
-        es = got.get(it["uid"])
-        if not es:
-            res[it["uid"]] = (None, "sin respuesta para este texto")
-            continue
-        final = restore(es, it["tokens"])
-        # Conservar espacios iniciales/finales del original
-        lead = it["en"][:len(it["en"]) - len(it["en"].lstrip())]
-        trail = it["en"][len(it["en"].rstrip()):]
-        final = lead + final.strip() + trail
-        errs = validate(it["en"], final)
-        if not errs and it["words"] >= 6 and classify(final) == "en":
-            errs = ["parece seguir en inglés"]
-        res[it["uid"]] = (final, None) if not errs else (None, "; ".join(errs)[:300])
+        res[it["uid"]] = finalize(it, got.get(it["uid"]))
     return res
+
+
+def finalize(it: dict, es: str | None) -> tuple[str | None, str | None]:
+    """Restaura marcadores y valida. -> (traducción final, None) o (None, error)."""
+    if not es:
+        return None, "sin respuesta para este texto"
+    final = restore(es, it["tokens"])
+    # Conservar espacios iniciales/finales del original
+    lead = it["en"][:len(it["en"]) - len(it["en"].lstrip())]
+    trail = it["en"][len(it["en"].rstrip()):]
+    final = lead + final.strip() + trail
+    errs = validate(it["en"], final)
+    if not errs and it["words"] >= 6 and classify(final) == "en":
+        errs = ["parece seguir en inglés"]
+    return (final, None) if not errs else (None, "; ".join(errs)[:300])
 
 
 def _next_batches(db, gl: Glossary, limit_words: int, limit_items: int, n: int,

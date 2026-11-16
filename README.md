@@ -75,6 +75,7 @@ Doble clic en:
 | `3_PARAR.bat` | Para limpiamente al terminar los lotes en curso. |
 | `4_EMPAQUETAR.bat` | Actualiza el mod en Mod Organizer con todo lo traducido hasta ahora. |
 | `5_EXTRAER_TRADUCCIONES.bat` | Descomprime en `data/imports` las traducciones de Nexus descargadas. |
+| `6_TRADUCIR_API.bat` | Alternativa a Ollama: traduce lo pendiente con la API por lotes de Anthropic u OpenAI (clave en `API.txt`, que no se sube). Puede ir a la vez que Ollama. |
 
 Requisitos: Python 3 (`winget install Python.Python.3.12`) y Ollama con el modelo indicado en `1_TRADUCIR.bat`.
 El estado vive en `data/trabajo.sqlite`; cada lote se guarda al terminar.
