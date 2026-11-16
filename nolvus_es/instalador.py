@@ -475,6 +475,12 @@ def cmd_instalar(a):
     data = trabajo / "datos"
     data.mkdir(parents=True, exist_ok=True)
     cat = json.loads(CATALOGO.read_text(encoding="utf-8"))
+    if a.solo_descargar:
+        titulo("Descargando las traducciones de Nexus (sin instalar nada)")
+        carpetas = [Path(p) for p in a.descargas] if a.descargas else carpetas_descarga(inst)
+        hay = guiar_descargas(cat, a.genero, carpetas, a.si)
+        print(f"\nListo: {len(hay)} traducciones disponibles. Las nuevas están en {REPO / 'instalacion' / 'nexus'}")
+        return
     nuevo = Path(tempfile.mkdtemp(prefix="nolvus-es-", dir=trabajo))
 
     titulo("1/4 Español oficial de Bethesda (de tu propio juego)")
@@ -586,6 +592,8 @@ def main(argv=None):
     ap.add_argument("--descargas", nargs="*", help="carpetas donde buscar las descargas de Nexus")
     ap.add_argument("--trabajo", help="carpeta de trabajo (por defecto, instalacion/ junto al instalador)")
     ap.add_argument("--si", action="store_true", help="no preguntar nada")
+    ap.add_argument("--solo-descargar", action="store_true",
+                    help="solo descargar las traducciones de Nexus, sin crear ni activar mods")
     ap.add_argument("--no-activar", action="store_true", help="crear los mods pero no tocar la lista de mods")
     a = ap.parse_args(argv)
     (cmd_instalar if a.orden == "instalar" else cmd_desinstalar)(a)
