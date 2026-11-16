@@ -54,19 +54,30 @@ def pack(data: Path, out: Path, build_official: Path | None) -> dict:
     mcm: dict[str, dict] = defaultdict(dict)
     stats = defaultdict(int)
 
-    # 1. Traducciones importadas válidas (fase 3)
+    # 1. Traducciones importadas válidas (fase 3). Si dos traducciones cubren el mismo texto, gana
+    #    la del catálogo revisado a mano y, después, el orden del catálogo (más texto primero).
     tm = data / "tm"
     imported_keys = set()
+    prio = {}
+    cat_f = Path(__file__).resolve().parent.parent / "catalogo" / "traducciones_nexus.json"
+    if cat_f.exists():
+        for i, a in enumerate(json.loads(cat_f.read_text(encoding="utf-8"))["archivos"]):
+            prio.setdefault(f"nexus:{a['nexus']}", i)
+    filas = []
     if tm.exists():
         for f in tm.glob("*.import.jsonl.gz"):
             for line in gzip.open(f, "rt", encoding="utf-8"):
                 r = json.loads(line)
-                if r["status"] != "ok" or r["key"].startswith("MCM|"):
-                    continue
-                owner, e = _dsd_entry(r["key"], r["es"], light)
-                by_owner[owner].append(e)
-                imported_keys.add(r["key"])
-                stats["importadas"] += 1
+                if r["status"] == "ok" and not r["key"].startswith("MCM|"):
+                    filas.append((prio.get(r.get("source", ""), 10 ** 6), r["key"], r["es"]))
+    filas.sort()
+    for _, key, es in filas:
+        if key in imported_keys:
+            continue
+        owner, e = _dsd_entry(key, es, light)
+        by_owner[owner].append(e)
+        imported_keys.add(key)
+        stats["importadas"] += 1
     # 2. Traducciones con IA o glosario
     gl = Glossary.load(data)
     q = """SELECT k.key, u.es, u.source, u.en FROM keys k JOIN units u ON u.uid = k.uid
