@@ -216,16 +216,23 @@ def descargar_nexus(faltan: list[dict], clave: str, destino: Path) -> int:
     juego = "skyrimspecialedition"
     for a in faltan:
         try:
+            files = _nexus(f"/games/{juego}/mods/{a['nexus']}/files.json", clave).get("files", [])
             if a.get("file_id"):
-                ids = [a["file_id"]]
+                elegidos = [f for f in files if f["file_id"] == a["file_id"]] or \
+                           [{"file_id": a["file_id"], "file_name": f"{a['nombre']}-{a['nexus']}-{a['file_id']}.7z"}]
             else:   # solo sabemos el mod: sus archivos principales (los opcionales suelen ser parches de otros mods)
-                files = _nexus(f"/games/{juego}/mods/{a['nexus']}/files.json", clave).get("files", [])
-                ids = [f["file_id"] for f in files if f.get("category_name") == "MAIN"] or \
-                      [f["file_id"] for f in files if f.get("category_name") == "OPTIONAL"]
-            for fid in ids:
+                elegidos = [f for f in files if f.get("category_name") == "MAIN"] or \
+                           [f for f in files if f.get("category_name") == "OPTIONAL"]
+            for fi in elegidos:
+                fid = fi["file_id"]
                 links = _nexus(f"/games/{juego}/mods/{a['nexus']}/files/{fid}/download_link.json", clave)
                 uri = links[0]["URI"]
-                nombre = urllib.parse.unquote(Path(urllib.parse.urlparse(uri).path).name)
+                # El nombre real del archivo (lleva el ID del mod): la URL de descarga puede no tenerlo
+                nombre = fi.get("file_name") or urllib.parse.unquote(Path(urllib.parse.urlparse(uri).path).name)
+                if f"{a['nexus']}" not in nombre:
+                    nombre = f"{Path(nombre).stem}-{a['nexus']}-{fid}{Path(nombre).suffix or '.7z'}"
+                if (destino / nombre).exists():
+                    continue
                 tmp = destino / (nombre + ".parcial")
                 print(f"  descargando {nombre} …", flush=True)
                 with urllib.request.urlopen(urllib.request.Request(uri, headers={"User-Agent": "nolvus-es/1.0"}),
