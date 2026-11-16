@@ -14,7 +14,8 @@ if not defined PY (
   exit /b 1
 )
 
-rem Descomprime en data\imports las traducciones descargadas (se puede repetir: solo hace lo nuevo)
-%PY% -m nolvus_es.extract --downloads "%USERPROFILE%\Downloads" --data data
+rem Descomprime en data\imports todas las traducciones descargadas (Descargas y instalacion\nexus).
+rem Se puede repetir: solo descomprime lo nuevo.
+%PY% -m nolvus_es.extract --downloads "%USERPROFILE%\Downloads" "instalacion\nexus" --data data
 echo.
 pause

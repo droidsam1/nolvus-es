@@ -26,11 +26,20 @@ KNOWN = {
     "125480": "The Wheels of Lull", "3472": "Ordinator", "32849": "Carved Brink", "57186": "Thaumaturgy",
     "125343": "Clockwork", "178421": "Auri", "22563": "Wintersun", "107676": "DSD",
 }
+# Más todas las del catálogo (incluidas las enlazadas desde las páginas de los mods de Nolvus)
+_CAT = Path(__file__).resolve().parent.parent / "catalogo" / "traducciones_nexus.json"
+if _CAT.exists():
+    for _a in json.loads(_CAT.read_text(encoding="utf-8"))["archivos"]:
+        KNOWN.setdefault(str(_a["nexus"]), _a["mod"])
 ARCHIVE_EXT = (".7z", ".rar", ".zip")
 SEVEN_ZIP = [Path(r"C:\Nolvus\lib\7z.exe"), Path(r"C:\Program Files\7-Zip\7z.exe")]
 
 
 def nexus_id(name: str) -> str | None:
+    # Nexus nombra los archivos «Nombre-<id>-versión-fecha» o «Nombre <id> versión fecha»
+    for m in re.finditer(r"(?:^|[\s\-_])(\d{3,6})(?=[\s\-_.])", name):
+        if m.group(1) in KNOWN:
+            return m.group(1)
     for m in re.finditer(r"(?<![0-9])(\d{3,6})(?![0-9])", name):
         if m.group(1) in KNOWN:
             return m.group(1)
@@ -85,14 +94,21 @@ def main(argv=None):
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser()
-    ap.add_argument("--downloads", required=True)
+    ap.add_argument("--downloads", required=True, nargs="+", help="una o varias carpetas con descargas")
     ap.add_argument("--data", default="data")
     a = ap.parse_args(argv)
-    rows = extract_all(Path(a.downloads), Path(a.data))
+    rows = []
+    for d in a.downloads:
+        if Path(d).exists():
+            rows += extract_all(Path(d), Path(a.data))
     for r in rows:
-        print(f'{r["estado"]:<14} {r["mod"]:<28} {r["archivo"]}')
-    falta = sorted(set(KNOWN) - {r["nexus"] for r in rows})
-    print(f"\n{len(rows)} archivos reconocidos. Sin descargar todavía: " + ", ".join(KNOWN[i] for i in falta))
+        if r["estado"] != "ya extraído":
+            print(f'{r["estado"]:<14} {r["mod"][:28]:<28} {r["archivo"]}')
+    err = [r for r in rows if r["estado"].startswith("ERROR")]
+    print(f"\n{len(rows)} archivos reconocidos, {len(err)} con error. "
+          f"Traducciones del catálogo sin descargar: {len(set(KNOWN) - {r['nexus'] for r in rows})}")
+    (Path(a.data) / "imports" / "extraccion.json").write_text(json.dumps(rows, ensure_ascii=False, indent=1),
+                                                            encoding="utf-8")
 
 
 if __name__ == "__main__":
