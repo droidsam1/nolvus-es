@@ -7,6 +7,7 @@ con Ollama. Las dos cosas pueden ir a la vez: lo que se envía a la API queda re
 Configuración: archivo API.txt junto a los .bat (no se sube al repositorio):
     clave=sk-ant-...        (Anthropic)  o  clave=sk-...  (OpenAI)
     modelo=claude-sonnet-5-5               (opcional en Anthropic; obligatorio en OpenAI)
+    max_palabras=5000                      (opcional: un solo envío de prueba de ese tamaño)
 
 Uso:
     python -m nolvus_es.lotes auto --data data      enviar, esperar, recoger y repetir hasta acabar
@@ -53,7 +54,8 @@ def leer_config(path: Path) -> dict:
     modelo = cfg.get("modelo") or (ANTHROPIC_DEFAULT if prov == "anthropic" else "")
     if not modelo:
         sys.exit(f"Con una clave de OpenAI hay que indicar el modelo en {path} (modelo=...).")
-    return {"proveedor": prov, "clave": clave, "modelo": modelo}
+    mp = cfg.get("max_palabras", "").replace(".", "").strip()
+    return {"proveedor": prov, "clave": clave, "modelo": modelo, "max_palabras": int(mp) if mp.isdigit() else None}
 
 
 def _tablas(db):
@@ -381,7 +383,7 @@ def main(argv=None):
     if a.orden == "recoger":
         print(recoger(data, cfg))
         return
-    auto(data, cfg, a.max_palabras, a.si, a.reintentar_fallidos, a.espera)
+    auto(data, cfg, a.max_palabras or cfg["max_palabras"], a.si, a.reintentar_fallidos, a.espera)
 
 
 if __name__ == "__main__":

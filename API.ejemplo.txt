@@ -4,5 +4,10 @@
 # OpenAI:    crea una clave en https://platform.openai.com    (empieza por sk-)
 clave=
 #
-# Modelo (opcional con Anthropic; con OpenAI pon el que quieras usar):
-modelo=claude-sonnet-5-5
+# Modelo. Anthropic: claude-sonnet-5-5 (por defecto) o claude-haiku-5-5.
+#         OpenAI:    por ejemplo gpt-6.1-sol, gpt-6.1-terra o gpt-6-luna.
+modelo=
+#
+# Prueba: con un número aquí se hace UN solo envío de ese tamaño (en palabras) y para.
+# Revisa el resultado y, si te gusta, borra el número para traducir todo lo que queda.
+max_palabras=5000
