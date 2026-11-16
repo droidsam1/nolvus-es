@@ -504,6 +504,28 @@ def cmd_instalar(a):
     copia = activar(inst, [MOD_ES, MOD_DSD] if ok_dsd else [MOD_ES])
     print(f"  Activados. Copia de tu lista de mods anterior: {copia.name}")
     print("\nListo: abre Mod Organizer y lanza el juego. Para quitarlo: DESINSTALAR.bat")
+    creditos(cat, set(extraidos), a.si)
+
+
+def creditos(cat: dict, usados: set, auto: bool):
+    """Agradecimiento a los autores, con sus enlaces. Respaldar (endorse) es siempre voluntario:
+    el instalador nunca lo hace por el usuario ni lo exige."""
+    lista = [a for a in cat["archivos"] if a["file_id"] in usados]
+    if not lista:
+        return
+    titulo("Gracias a quienes lo han hecho posible")
+    vistos = set()
+    for a in lista:
+        if (a["nexus"], a["autor"]) in vistos:
+            continue
+        vistos.add((a["nexus"], a["autor"]))
+        print(f"  {a['mod']:<34} {a['autor']:<18} https://www.nexusmods.com/skyrimspecialedition/mods/{a['nexus']}")
+    print("\nSi te gusta su trabajo, puedes respaldar (endorse) sus traducciones en Nexus: es la mejor forma de "
+          "agradecerlo. (Nexus permite hacerlo pasados 15 minutos desde la descarga.)")
+    if not auto and input("¿Abro sus páginas en el navegador? [s/N] ").strip().lower() in ("s", "si", "sí"):
+        for nexus in sorted({a["nexus"] for a in lista}):
+            webbrowser.open(f"https://www.nexusmods.com/skyrimspecialedition/mods/{nexus}")
+            time.sleep(0.4)
 
 
 def cmd_desinstalar(a):
