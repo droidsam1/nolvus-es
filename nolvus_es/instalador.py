@@ -226,7 +226,8 @@ def descargar_nexus(faltan: list[dict], clave: str, destino: Path) -> int:
             for fi in elegidos:
                 fid = fi["file_id"]
                 links = _nexus(f"/games/{juego}/mods/{a['nexus']}/files/{fid}/download_link.json", clave)
-                uri = links[0]["URI"]
+                # Los enlaces de Nexus pueden traer espacios sin codificar en el nombre del archivo
+                uri = urllib.parse.quote(links[0]["URI"], safe=":/?&=%#+~@!$'()*,;")
                 # El nombre real del archivo (lleva el ID del mod): la URL de descarga puede no tenerlo
                 nombre = fi.get("file_name") or urllib.parse.unquote(Path(urllib.parse.urlparse(uri).path).name)
                 if f"{a['nexus']}" not in nombre:
@@ -243,6 +244,10 @@ def descargar_nexus(faltan: list[dict], clave: str, destino: Path) -> int:
                 time.sleep(1)                  # sin prisas: respetar los límites de la API
         except Exception as e:  # noqa: BLE001
             print(f"  no se pudo descargar la traducción de {a['mod']}: {e}")
+            detalle = getattr(e, "read", lambda: b"")()[:300] if hasattr(e, "read") else b""
+            with open(destino / "errores.log", "a", encoding="utf-8") as log:
+                log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}\t{a['nexus']}\t{a['mod']}\t"
+                          f"{type(e).__name__}: {e}\t{detalle!r}\n")
     return n
 
 
