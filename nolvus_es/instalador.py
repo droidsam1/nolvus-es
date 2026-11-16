@@ -4,8 +4,9 @@ Pasos (unos minutos; se puede cortar y repetir):
   1. Encuentra tu instalación de Nolvus y su perfil.
   2. Saca el español oficial de Bethesda de tu propio juego y lo aplica a los registros que
      Nolvus deja en inglés (según catalogo/receta_oficial.json.gz: solo claves, sin texto).
-  3. Te guía para descargar de Nexus las traducciones de otros autores (enlaces directos);
-     cuando las tienes, las descomprime y comprueba registro a registro que son de tu versión.
+  3. Descarga de Nexus las traducciones de otros autores: automáticamente si tienes cuenta Premium
+     (clave en NEXUS.txt), o guiándote con enlaces directos si no. Luego las descomprime y
+     comprueba registro a registro que son de tu versión de cada mod.
   4. Crea los mods "Nolvus ES - Traduccion" y "Dynamic String Distributor" en Mod Organizer
      y los activa (con copia de seguridad de tu lista de mods).
 
@@ -156,6 +157,66 @@ def localizar(archivo: dict, carpetas: list[Path]) -> Path | None:
     return mejor
 
 
+NEXUS_API = "https://api.nexusmods.com/v1"
+NEXUS_TXT = REPO / "NEXUS.txt"
+
+
+def clave_nexus() -> str | None:
+    """Clave personal de Nexus (nexusmods.com → Settings → API Keys), en NEXUS.txt o NEXUS_API_KEY."""
+    if os.environ.get("NEXUS_API_KEY"):
+        return os.environ["NEXUS_API_KEY"].strip()
+    if NEXUS_TXT.exists():
+        for line in NEXUS_TXT.read_text(encoding="utf-8-sig").splitlines():
+            line = line.strip()
+            if line.lower().startswith("clave=") and len(line) > 6:
+                return line[6:].strip()
+    return None
+
+
+def _nexus(path: str, clave: str):
+    import urllib.request
+    req = urllib.request.Request(f"{NEXUS_API}{path}", headers={
+        "apikey": clave, "Application-Name": "nolvus-es", "Application-Version": "1.0",
+        "User-Agent": "nolvus-es/1.0 (github.com/droidsam1/nolvus-es)"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return json.loads(r.read())
+
+
+def descargar_nexus(faltan: list[dict], clave: str, destino: Path) -> int:
+    """Descarga automática con la API oficial de Nexus. Solo funciona con cuenta Premium
+    (Nexus no da enlaces directos por API a las cuentas gratuitas)."""
+    import urllib.parse
+    import urllib.request
+    try:
+        u = _nexus("/users/validate.json", clave)
+    except Exception as e:  # noqa: BLE001
+        print(f"  La clave de Nexus no funciona ({e}). Sigo con las descargas manuales.")
+        return 0
+    if not u.get("is_premium"):
+        print(f"  Hola, {u.get('name')}: tu cuenta de Nexus no es Premium, así que Nexus no permite "
+              "descargar por API. Sigo con las descargas guiadas.")
+        return 0
+    destino.mkdir(parents=True, exist_ok=True)
+    n = 0
+    for a in faltan:
+        try:
+            links = _nexus(f"/games/{a.get('juego', 'skyrimspecialedition')}/mods/{a['nexus']}/files/"
+                           f"{a['file_id']}/download_link.json", clave)
+            uri = links[0]["URI"]
+            nombre = urllib.parse.unquote(Path(urllib.parse.urlparse(uri).path).name)
+            tmp = destino / (nombre + ".parcial")
+            print(f"  descargando {nombre} …", flush=True)
+            with urllib.request.urlopen(urllib.request.Request(uri, headers={"User-Agent": "nolvus-es/1.0"}),
+                                        timeout=600) as r, open(tmp, "wb") as f:
+                shutil.copyfileobj(r, f, 1 << 20)
+            tmp.replace(destino / nombre)
+            n += 1
+            time.sleep(1)                      # sin prisas: respetar los límites de la API
+        except Exception as e:  # noqa: BLE001
+            print(f"  no se pudo descargar {a['nombre']}: {e}")
+    return n
+
+
 def carpetas_descarga(inst: Instance) -> list[Path]:
     """Descargas de Windows, la carpeta de descargas de Mod Organizer (botón «Mod manager download») e incluidos/."""
     out = [Path.home() / "Downloads", REPO / "incluidos"]
@@ -178,6 +239,14 @@ def necesarios(cat: dict, genero: str) -> list[dict]:
 
 def guiar_descargas(cat: dict, genero: str, carpetas: list[Path], auto: bool) -> dict[int, Path]:
     lista = necesarios(cat, genero)
+    clave = clave_nexus()
+    if clave:
+        destino = REPO / "instalacion" / "nexus"
+        carpetas = carpetas + [destino]
+        faltan = [a for a in lista if not localizar(a, carpetas)]
+        if faltan:
+            print(f"Descargando {len(faltan)} archivos con tu cuenta de Nexus…")
+            descargar_nexus(faltan, clave, destino)
     while True:
         hay = {a["file_id"]: localizar(a, carpetas) for a in lista}
         faltan = [a for a in lista if not hay[a["file_id"]]]

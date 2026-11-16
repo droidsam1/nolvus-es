@@ -1,0 +1,8 @@
+# Descarga automática de las traducciones (solo cuentas Premium de Nexus).
+#
+# 1. Copia este archivo como NEXUS.txt (ese archivo no se sube a ningún sitio).
+# 2. En nexusmods.com: tu avatar → Settings → API Keys → copia tu "Personal API Key".
+# 3. Pégala después de "clave=" y guarda.
+#
+# Sin cuenta Premium, Nexus no permite descargar por API: el instalador te guiará con enlaces.
+clave=

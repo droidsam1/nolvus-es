@@ -43,6 +43,10 @@ Python, el instalador prepara uno portátil (el oficial de python.org) solo para
      **Nolvus ES - Traduccion** y **Dynamic String Distributor**, y los activa con copia de seguridad de tu lista de mods.
 3. Para quitarlo: **`DESINSTALAR.bat`**.
 
+**Con cuenta Premium de Nexus, todo es automático:** copia `NEXUS.ejemplo.txt` como `NEXUS.txt` y pega
+tu clave personal de Nexus (nexusmods.com → Settings → API Keys). El instalador descargará solo
+las traducciones. Sin Premium, Nexus no permite descargar por API y el instalador te guía con enlaces.
+
 Opciones: `INSTALAR.bat --genero femenino` (traducciones que distinguen el sexo del personaje),
 `--instancia "D:\Nolvus\Instances\Nolvus Awakening"`.
 
