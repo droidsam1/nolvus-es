@@ -25,6 +25,7 @@ import string
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import webbrowser
 import zipfile
@@ -188,20 +189,78 @@ def clave_nexus() -> str | None:
     return None
 
 
+NEXUS_PARALELO = 3          # descargas a la vez: más no aporta casi nada y roza los límites de Nexus
+_LIMITES = {"hora": None, "dia": None}
+_lock = threading.Lock()
+
+
 def _nexus(path: str, clave: str):
     import urllib.request
     req = urllib.request.Request(f"{NEXUS_API}{path}", headers={
         "apikey": clave, "Application-Name": "nolvus-es", "Application-Version": "1.0",
         "User-Agent": "nolvus-es/1.0 (github.com/droidsam1/nolvus-es)"})
     with urllib.request.urlopen(req, timeout=60) as r:
+        # Nexus dice en cada respuesta cuántas peticiones quedan: se usan para no pasarse
+        h, d = r.headers.get("x-rl-hourly-remaining"), r.headers.get("x-rl-daily-remaining")
+        with _lock:
+            if h and h.isdigit():
+                _LIMITES["hora"] = int(h)
+            if d and d.isdigit():
+                _LIMITES["dia"] = int(d)
         return json.loads(r.read())
 
 
-def descargar_nexus(faltan: list[dict], clave: str, destino: Path) -> int:
-    """Descarga automática con la API oficial de Nexus. Solo funciona con cuenta Premium
-    (Nexus no da enlaces directos por API a las cuentas gratuitas)."""
+def _frenar() -> bool:
+    """Pausa si quedan pocas peticiones. -> False si hay que dejarlo para más tarde."""
+    h, d = _LIMITES["hora"], _LIMITES["dia"]
+    if (d is not None and d < 20) and (h is not None and h < 20):
+        return False
+    if (h is not None and h < 60) or (d is not None and d < 60):
+        time.sleep(5)
+    return True
+
+
+def _descargar_uno(a: dict, clave: str, destino: Path, juego: str) -> int:
     import urllib.parse
     import urllib.request
+    if not _frenar():
+        raise RuntimeError("Nexus indica que quedan muy pocas peticiones; vuelve a ejecutarlo más tarde")
+    files = _nexus(f"/games/{juego}/mods/{a['nexus']}/files.json", clave).get("files", [])
+    if a.get("file_id"):
+        elegidos = [f for f in files if f["file_id"] == a["file_id"]] or \
+                   [{"file_id": a["file_id"], "file_name": f"{a['nombre']}-{a['nexus']}-{a['file_id']}.7z"}]
+    else:   # solo sabemos el mod: sus archivos principales (los opcionales suelen ser parches de otros mods)
+        elegidos = [f for f in files if f.get("category_name") == "MAIN"] or \
+                   [f for f in files if f.get("category_name") == "OPTIONAL"]
+    n = 0
+    for fi in elegidos:
+        fid = fi["file_id"]
+        # El nombre real del archivo (lleva el ID del mod): la URL de descarga puede no tenerlo
+        nombre = fi.get("file_name") or f"{a['nexus']}-{fid}.7z"
+        if f"{a['nexus']}" not in nombre:
+            nombre = f"{Path(nombre).stem}-{a['nexus']}-{fid}{Path(nombre).suffix or '.7z'}"
+        if (destino / nombre).exists():
+            continue
+        if not _frenar():
+            raise RuntimeError("Nexus indica que quedan muy pocas peticiones; vuelve a ejecutarlo más tarde")
+        links = _nexus(f"/games/{juego}/mods/{a['nexus']}/files/{fid}/download_link.json", clave)
+        # Los enlaces de Nexus pueden traer espacios sin codificar en el nombre del archivo
+        uri = urllib.parse.quote(links[0]["URI"], safe=":/?&=%#+~@!$'()*,;")
+        tmp = destino / (nombre + ".parcial")
+        with _lock:
+            print(f"  descargando {nombre} …", flush=True)
+        with urllib.request.urlopen(urllib.request.Request(uri, headers={"User-Agent": "nolvus-es/1.0"}),
+                                    timeout=600) as r, open(tmp, "wb") as f:
+            shutil.copyfileobj(r, f, 1 << 20)
+        tmp.replace(destino / nombre)
+        n += 1
+    return n
+
+
+def descargar_nexus(faltan: list[dict], clave: str, destino: Path) -> int:
+    """Descarga automática con la API oficial de Nexus (NEXUS_PARALELO a la vez). Solo funciona con
+    cuenta Premium (Nexus no da enlaces directos por API a las cuentas gratuitas)."""
+    import concurrent.futures as cf
     try:
         u = _nexus("/users/validate.json", clave)
     except Exception as e:  # noqa: BLE001
@@ -212,42 +271,23 @@ def descargar_nexus(faltan: list[dict], clave: str, destino: Path) -> int:
               "descargar por API. Sigo con las descargas guiadas.")
         return 0
     destino.mkdir(parents=True, exist_ok=True)
-    n = 0
-    juego = "skyrimspecialedition"
-    for a in faltan:
-        try:
-            files = _nexus(f"/games/{juego}/mods/{a['nexus']}/files.json", clave).get("files", [])
-            if a.get("file_id"):
-                elegidos = [f for f in files if f["file_id"] == a["file_id"]] or \
-                           [{"file_id": a["file_id"], "file_name": f"{a['nombre']}-{a['nexus']}-{a['file_id']}.7z"}]
-            else:   # solo sabemos el mod: sus archivos principales (los opcionales suelen ser parches de otros mods)
-                elegidos = [f for f in files if f.get("category_name") == "MAIN"] or \
-                           [f for f in files if f.get("category_name") == "OPTIONAL"]
-            for fi in elegidos:
-                fid = fi["file_id"]
-                links = _nexus(f"/games/{juego}/mods/{a['nexus']}/files/{fid}/download_link.json", clave)
-                # Los enlaces de Nexus pueden traer espacios sin codificar en el nombre del archivo
-                uri = urllib.parse.quote(links[0]["URI"], safe=":/?&=%#+~@!$'()*,;")
-                # El nombre real del archivo (lleva el ID del mod): la URL de descarga puede no tenerlo
-                nombre = fi.get("file_name") or urllib.parse.unquote(Path(urllib.parse.urlparse(uri).path).name)
-                if f"{a['nexus']}" not in nombre:
-                    nombre = f"{Path(nombre).stem}-{a['nexus']}-{fid}{Path(nombre).suffix or '.7z'}"
-                if (destino / nombre).exists():
-                    continue
-                tmp = destino / (nombre + ".parcial")
-                print(f"  descargando {nombre} …", flush=True)
-                with urllib.request.urlopen(urllib.request.Request(uri, headers={"User-Agent": "nolvus-es/1.0"}),
-                                            timeout=600) as r, open(tmp, "wb") as f:
-                    shutil.copyfileobj(r, f, 1 << 20)
-                tmp.replace(destino / nombre)
-                n += 1
-                time.sleep(1)                  # sin prisas: respetar los límites de la API
-        except Exception as e:  # noqa: BLE001
-            print(f"  no se pudo descargar la traducción de {a['mod']}: {e}")
-            detalle = getattr(e, "read", lambda: b"")()[:300] if hasattr(e, "read") else b""
-            with open(destino / "errores.log", "a", encoding="utf-8") as log:
-                log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}\t{a['nexus']}\t{a['mod']}\t"
-                          f"{type(e).__name__}: {e}\t{detalle!r}\n")
+    n, juego = 0, "skyrimspecialedition"
+    with cf.ThreadPoolExecutor(max_workers=NEXUS_PARALELO) as pool:
+        futs = {pool.submit(_descargar_uno, a, clave, destino, juego): a for a in faltan}
+        for fut in cf.as_completed(futs):
+            a = futs[fut]
+            try:
+                n += fut.result()
+            except Exception as e:  # noqa: BLE001
+                detalle = getattr(e, "read", lambda: b"")()[:300] if hasattr(e, "read") else b""
+                with _lock:
+                    print(f"  no se pudo descargar la traducción de {a['mod']}: {e}", flush=True)
+                    with open(destino / "errores.log", "a", encoding="utf-8") as log:
+                        log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}\t{a['nexus']}\t{a['mod']}\t"
+                                  f"{type(e).__name__}: {e}\t{detalle!r}\n")
+    h, d = _LIMITES["hora"], _LIMITES["dia"]
+    if h is not None:
+        print(f"  Peticiones a Nexus que te quedan: {h} esta hora, {d} hoy.")
     return n
 
 
