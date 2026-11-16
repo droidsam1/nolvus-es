@@ -60,7 +60,9 @@ def import_pair(original: Path, translated: Path, source: str, tm_dir: Path) -> 
         out.append({"key": k, "plugin": name, "en": oe.text, "es": e.text, "status": status,
                     "source": source, "edid": oe.editor_id})
     tm_dir.mkdir(parents=True, exist_ok=True)
-    with gzip.open(tm_dir / f"{name}.import.jsonl.gz", "wt", encoding="utf-8") as f:
+    # Un archivo por plugin y fuente: dos traducciones del mismo mod no se pisan
+    tag = "".join(c if c.isalnum() else "_" for c in source)
+    with gzip.open(tm_dir / f"{name}.{tag}.import.jsonl.gz", "wt", encoding="utf-8") as f:
         for r in out:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
     stats["textos_original"] = len(oent)

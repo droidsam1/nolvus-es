@@ -52,8 +52,10 @@ def textos_actuales(data: Path) -> tuple[dict[str, str], dict[str, bool]]:
     return winner, light
 
 
-def ensamblar(data: Path, traducciones: Path, out: Path, oficial: Path | None, light: dict | None = None) -> dict:
-    """light: {plugin: es ESL}. Si no se da, se saca del inventario (data/plugins.json)."""
+def ensamblar(data: Path, traducciones: Path, out: Path, oficial: Path | None, light: dict | None = None,
+              prioridad: dict | None = None) -> dict:
+    """light: {plugin: es ESL}. Si no se da, se saca del inventario (data/plugins.json).
+    prioridad: {"nexus:<id>": orden} para decidir entre dos traducciones del mismo texto."""
     stats = defaultdict(int)
     propias = sorted(traducciones.glob("*.jsonl")) if traducciones.exists() else []
     if propias and not (data / "plugins.json").exists():
@@ -72,14 +74,21 @@ def ensamblar(data: Path, traducciones: Path, out: Path, oficial: Path | None, l
         hechas.add(key)
         stats[fuente] += 1
 
-    # 1. Traducciones de Nexus descargadas por el jugador
+    # 1. Traducciones de Nexus descargadas por el jugador. Si dos traducciones cubren el mismo texto,
+    #    gana la de más prioridad (orden del catálogo: primero las revisadas a mano).
     tm = data / "tm"
+    filas = []
     for f in sorted(tm.glob("*.import.jsonl.gz")) if tm.exists() else []:
         with gzip.open(f, "rt", encoding="utf-8") as fh:
             for line in fh:
                 r = json.loads(line)
                 if r["status"] == "ok" and not r["key"].startswith("MCM|"):
-                    add(r["key"], r["es"], "nexus")
+                    filas.append(r)
+    prio = prioridad or {}
+    filas.sort(key=lambda r: prio.get(r.get("source", ""), 10 ** 6))
+    for r in filas:
+        if r["key"] not in hechas:
+            add(r["key"], r["es"], "nexus")
 
     # 2. Traducciones del proyecto
     mcm_inv = {}

@@ -141,9 +141,17 @@ def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip().lower()
 
 
-def localizar(archivo: dict, carpetas: list[Path]) -> Path | None:
-    nombre, mid = _norm(archivo["nombre"]), str(archivo["nexus"])
-    mejor = None
+def clave(a: dict):
+    """Identificador de una entrada del catálogo: el archivo concreto de Nexus o, si el catálogo
+    solo sabe el mod (traducciones enlazadas desde la página del mod original), el mod entero."""
+    return a.get("file_id") or f"m{a['nexus']}"
+
+
+def localizar(archivo: dict, carpetas: list[Path]) -> list[Path]:
+    """Descargas que corresponden a una entrada del catálogo (Nexus pone el ID del mod en el nombre)."""
+    mid = str(archivo["nexus"])
+    nombre = _norm(archivo["nombre"]) if archivo.get("nombre") else None
+    hallados: dict[str, Path] = {}
     for c in carpetas:
         if not c.exists():
             continue
@@ -151,10 +159,17 @@ def localizar(archivo: dict, carpetas: list[Path]) -> Path | None:
             if not f.is_file() or not f.name.lower().endswith(ARCHIVOS):
                 continue
             n = _norm(f.name)
-            if n.startswith(nombre) and re.match(rf"[\s\-_.]*{mid}(?!\d)", n[len(nombre):]):
-                if mejor is None or f.stat().st_mtime > mejor.stat().st_mtime:
-                    mejor = f
-    return mejor
+            if nombre:
+                ok = n.startswith(nombre) and re.match(rf"[\s\-_.]*{mid}(?!\d)", n[len(nombre):])
+            else:      # cualquier archivo de ese mod: «Nombre-<id>-versión-fecha» o «Nombre <id> versión fecha»
+                ok = re.search(rf"[\s\-_]{mid}[\s\-_]", n)
+            if ok:
+                base = n if nombre else re.sub(r"[\s\-_]\d[\d\-_. tz:]*\.\w+$", "", n)   # sin versión ni fecha
+                if base not in hallados or f.stat().st_mtime > hallados[base].stat().st_mtime:
+                    hallados[base] = f
+    if nombre:
+        return [max(hallados.values(), key=lambda f: f.stat().st_mtime)] if hallados else []
+    return sorted(hallados.values())
 
 
 NEXUS_API = "https://api.nexusmods.com/v1"
@@ -198,22 +213,29 @@ def descargar_nexus(faltan: list[dict], clave: str, destino: Path) -> int:
         return 0
     destino.mkdir(parents=True, exist_ok=True)
     n = 0
+    juego = "skyrimspecialedition"
     for a in faltan:
         try:
-            links = _nexus(f"/games/{a.get('juego', 'skyrimspecialedition')}/mods/{a['nexus']}/files/"
-                           f"{a['file_id']}/download_link.json", clave)
-            uri = links[0]["URI"]
-            nombre = urllib.parse.unquote(Path(urllib.parse.urlparse(uri).path).name)
-            tmp = destino / (nombre + ".parcial")
-            print(f"  descargando {nombre} …", flush=True)
-            with urllib.request.urlopen(urllib.request.Request(uri, headers={"User-Agent": "nolvus-es/1.0"}),
-                                        timeout=600) as r, open(tmp, "wb") as f:
-                shutil.copyfileobj(r, f, 1 << 20)
-            tmp.replace(destino / nombre)
-            n += 1
-            time.sleep(1)                      # sin prisas: respetar los límites de la API
+            if a.get("file_id"):
+                ids = [a["file_id"]]
+            else:   # solo sabemos el mod: sus archivos principales (los opcionales suelen ser parches de otros mods)
+                files = _nexus(f"/games/{juego}/mods/{a['nexus']}/files.json", clave).get("files", [])
+                ids = [f["file_id"] for f in files if f.get("category_name") == "MAIN"] or \
+                      [f["file_id"] for f in files if f.get("category_name") == "OPTIONAL"]
+            for fid in ids:
+                links = _nexus(f"/games/{juego}/mods/{a['nexus']}/files/{fid}/download_link.json", clave)
+                uri = links[0]["URI"]
+                nombre = urllib.parse.unquote(Path(urllib.parse.urlparse(uri).path).name)
+                tmp = destino / (nombre + ".parcial")
+                print(f"  descargando {nombre} …", flush=True)
+                with urllib.request.urlopen(urllib.request.Request(uri, headers={"User-Agent": "nolvus-es/1.0"}),
+                                            timeout=600) as r, open(tmp, "wb") as f:
+                    shutil.copyfileobj(r, f, 1 << 20)
+                tmp.replace(destino / nombre)
+                n += 1
+                time.sleep(1)                  # sin prisas: respetar los límites de la API
         except Exception as e:  # noqa: BLE001
-            print(f"  no se pudo descargar {a['nombre']}: {e}")
+            print(f"  no se pudo descargar la traducción de {a['mod']}: {e}")
     return n
 
 
@@ -237,29 +259,35 @@ def necesarios(cat: dict, genero: str) -> list[dict]:
     return [a for a in cat["archivos"] if a.get("variante") in (None, genero)]
 
 
-def guiar_descargas(cat: dict, genero: str, carpetas: list[Path], auto: bool) -> dict[int, Path]:
+def guiar_descargas(cat: dict, genero: str, carpetas: list[Path], auto: bool) -> dict:
+    """-> {clave de catálogo: [archivos descargados]}. Las entradas van por orden de importancia
+    (cuánto texto traducen): sin Premium se puede parar cuando se quiera y seguir otro día."""
     lista = necesarios(cat, genero)
-    clave = clave_nexus()
-    if clave:
+    key_nexus = clave_nexus()
+    if key_nexus:
         destino = REPO / "instalacion" / "nexus"
         carpetas = carpetas + [destino]
         faltan = [a for a in lista if not localizar(a, carpetas)]
         if faltan:
-            print(f"Descargando {len(faltan)} archivos con tu cuenta de Nexus…")
-            descargar_nexus(faltan, clave, destino)
+            print(f"Descargando {len(faltan)} traducciones con tu cuenta de Nexus…")
+            descargar_nexus(faltan, key_nexus, destino)
+    tanda = 15
     while True:
-        hay = {a["file_id"]: localizar(a, carpetas) for a in lista}
-        faltan = [a for a in lista if not hay[a["file_id"]]]
-        print(f"Tienes {len(lista) - len(faltan)} de {len(lista)} archivos.")
+        hay = {clave(a): localizar(a, carpetas) for a in lista}
+        faltan = [a for a in lista if not hay[clave(a)]]
+        print(f"Tienes {len(lista) - len(faltan)} de {len(lista)} traducciones.")
         if not faltan or auto:
             return {k: v for k, v in hay.items() if v}
-        print("\nFaltan estas descargas (botón «Manual download» o «Mod manager download» → guarda el archivo en Descargas):")
-        for i, a in enumerate(faltan, 1):
-            print(f"  {i:>2}. {a['mod']:<34} {a['nombre']}  (v{a['version']}, de {a['autor']})")
+        print(f"\nSiguientes descargas, de más a menos importante ({min(tanda, len(faltan))} de {len(faltan)}). "
+              "En cada página pulsa «Manual download» o «Mod manager download»; si hay varios archivos "
+              "principales (Main files), descárgalos todos:")
+        for i, a in enumerate(faltan[:tanda], 1):
+            que = a["nombre"] + f" (v{a['version']})" if a.get("nombre") else "archivos principales"
+            print(f"  {i:>2}. {a['mod'][:34]:<34} {que}, de {a['autor']}")
             print(f"      {a['url']}")
-        r = input("\n[A] abrir los enlaces en el navegador · [Enter] volver a comprobar · [C] continuar sin ellas: ").strip().lower()
+        r = input("\n[A] abrir estos enlaces · [Enter] volver a comprobar · [C] continuar con lo que tengo: ").strip().lower()
         if r == "a":
-            for a in faltan:
+            for a in faltan[:tanda]:
                 webbrowser.open(a["url"])
                 time.sleep(0.4)
         elif r == "c":
@@ -293,9 +321,9 @@ def descomprimir(archivo: Path, destino: Path, sz: str | None) -> str:
     return "descomprimido"
 
 
-def importar(activos: dict[str, Path], extraidos: dict[int, Path], cat: dict, data: Path) -> dict:
+def importar(activos: dict[str, Path], extraidos: dict, cat: dict, data: Path) -> dict:
     from .importer import import_pair
-    por_id = {a["file_id"]: a for a in cat["archivos"]}
+    por_id = {clave(a): a for a in cat["archivos"]}
     hecho = {}
     hechos_file = data / "tm" / "importados.json"
     if hechos_file.exists():
@@ -310,11 +338,12 @@ def importar(activos: dict[str, Path], extraidos: dict[int, Path], cat: dict, da
             if not orig:
                 continue
             marca = f"{f.stat().st_size}:{f.stat().st_mtime_ns}:{Path(orig).stat().st_mtime_ns}"
-            if hecho.get(f.name) == marca:
+            ident = f"{fid}/{f.name}"
+            if hecho.get(ident) == marca:
                 continue
             r = import_pair(Path(orig), f, f"nexus:{a['nexus']}", data / "tm")
-            resumen[f.name] = r.get("ok", 0)
-            hecho[f.name] = marca
+            resumen[ident] = r.get("ok", 0)
+            hecho[ident] = marca
             print(f"  {f.name:<45} {r.get('ok', 0):>6} textos aplicables  ({a['mod']})", flush=True)
     hechos_file.parent.mkdir(parents=True, exist_ok=True)
     hechos_file.write_text(json.dumps(hecho, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -458,12 +487,15 @@ def cmd_instalar(a):
     hay = guiar_descargas(cat, a.genero, carpetas, a.si)
     sz = siete_zip(inst)
     extraidos = {}
-    for fid, arch in hay.items():
-        try:
-            descomprimir(arch, trabajo / "descargas" / str(fid), sz)
-            extraidos[fid] = trabajo / "descargas" / str(fid)
-        except Exception as e:  # noqa: BLE001
-            print(f"  ERROR al abrir {arch.name}: {e}")
+    for k, archivos in hay.items():
+        base = trabajo / "descargas" / str(k)
+        for arch in archivos:
+            sub = base / re.sub(r"[^\w.-]+", "_", arch.stem)[:80] if len(archivos) > 1 else base
+            try:
+                descomprimir(arch, sub, sz)
+                extraidos[k] = base
+            except Exception as e:  # noqa: BLE001
+                print(f"  ERROR al abrir {arch.name}: {e}")
     importar(activos, extraidos, cat, data)
 
     titulo("3/4 Creando el mod «Nolvus ES - Traduccion»")
@@ -479,7 +511,10 @@ def cmd_instalar(a):
                 self[name] = bool(p and read_header(Path(p)).is_light)
             return dict.get(self, name, default)
 
-    stats = ensamblar(data, REPO / "data" / "traducciones", nuevo, trabajo / "oficial", Ligeros())
+    prioridad = {}
+    for i, e in enumerate(cat["archivos"]):            # orden del catálogo: primero las revisadas a mano
+        prioridad.setdefault(f"nexus:{e['nexus']}", i)
+    stats = ensamblar(data, REPO / "data" / "traducciones", nuevo, trabajo / "oficial", Ligeros(), prioridad)
     stats["dsd_de_terceros"] = dsd_de_terceros(extraidos, nuevo)
     stats["menus_de_terceros"] = menus_de_terceros(extraidos, nuevo, data)
     (nuevo / "meta.ini").write_text("[General]\ngameName=SkyrimSE\nmodid=0\nversion=1.0\n"
@@ -510,7 +545,7 @@ def cmd_instalar(a):
 def creditos(cat: dict, usados: set, auto: bool):
     """Agradecimiento a los autores, con sus enlaces. Respaldar (endorse) es siempre voluntario:
     el instalador nunca lo hace por el usuario ni lo exige."""
-    lista = [a for a in cat["archivos"] if a["file_id"] in usados]
+    lista = [a for a in cat["archivos"] if clave(a) in usados]
     if not lista:
         return
     titulo("Gracias a quienes lo han hecho posible")
